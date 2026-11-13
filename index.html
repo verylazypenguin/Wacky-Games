@@ -79,7 +79,7 @@
 </style>
 </head>
 <body>
-<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.6.1</div></div>
+<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.6.2</div></div>
 <div id="timer"></div>
 <div id="big"></div>
 <div id="prompt"></div>
@@ -1002,6 +1002,7 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
     const b = solidBounds(s);
     if (!circleRect(p.pos.x, p.pos.z, p.r * 0.85, b).hit) continue;
     if (p.vel.y <= 0 && prevBottom >= b.maxY - 0.06 && p.pos.y < b.maxY) {
+      if (s.tag === 'glass' && s.glass && !s.glass.safe && mode === 'play' && SP.game === 'glass') { glassStep(s); continue; }
       if (s.tag === 'bounce') { p.pos.y = b.maxY; if (s.launch) { p.vel.y = 16; p.vel.z = s.launch; p.vel.x *= 0.3; p.launched = true; p.diving = false; } else { p.vel.y = CONFIG.bouncePad; mushBounce = 1; } if (me) sfx.boing(); p.squashV = 6; continue; }
       p.pos.y = b.maxY; p.vel.y = 0; p.grounded = true; p.ground = s;
     } else if (p.vel.y > 0 && prevTop <= b.minY + 0.06 && p.pos.y + p.h > b.minY) {
@@ -1025,6 +1026,7 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
     if (!c.hit) continue;
     if (s.tag === 'door' && s.real) { breakDoor(s); continue; }
     if (s.tag === 'pusher' && !(p.knockT > 0)) { p.knockT = 0.5; const dir = Math.sign(s.vx || (p.pos.x - s.mesh.position.x)) || 1; p.vel.x = dir * 5.5; p.vel.z = Math.sign(p.pos.z - s.mesh.position.z || 1) * 4; p.vel.y = 5; p.grounded = false; p.diving = false; p.recover = 0.35; if (me) { sfx.bonk(); shakeCam = 0.2; } }
+    if (s.tag === 'glass' && s.glass && !s.glass.safe && mode === 'play' && SP.game === 'glass' && b.maxY - p.pos.y < 0.4) { glassStep(s); continue; }
     if (b.maxY - p.pos.y < 0.4 && p.vel.y <= 0.1) { p.pos.y = b.maxY; p.grounded = true; p.ground = s; continue; }
     if (c.d > 0.0001) { const push = p.r - c.d; p.pos.x += c.dx / c.d * push; p.pos.z += c.dz / c.d * push; const nx = c.dx / c.d, nz = c.dz / c.d, vn = p.vel.x * nx + p.vel.z * nz; if (vn < 0) { p.vel.x -= vn * nx; p.vel.z -= vn * nz; } }
     else { // centre inside the box: push out along the shortest axis
@@ -2000,9 +2002,9 @@ function tntVisual(t) {
 
 /* ---------- MUSICAL CHAIRS arena ---------- */
 buildZone = 'chairs';
-const MC = { x: 200, z: 200, R: 11 };
+const MC = { x: 200, z: 200, R: 14, spots: [] };
 cyl(MC.x, -0.5, MC.z, MC.R + 0.6, 1, '#ffe0f0', true, 48);
-for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; const m = box(MC.x + Math.cos(a) * (MC.R + 0.4), 0.6, MC.z + Math.sin(a) * (MC.R + 0.4), 3.2, 1.2, 0.5, i % 2 ? '#ff7eb6' : '#ffd23f'); m.rotation.y = -a + Math.PI / 2; }
+for (let i = 0; i < 28; i++) { const a = i / 28 * Math.PI * 2; const m = box(MC.x + Math.cos(a) * (MC.R + 0.4), 0.6, MC.z + Math.sin(a) * (MC.R + 0.4), 3.4, 1.2, 0.5, i % 2 ? '#ff7eb6' : '#ffd23f'); m.rotation.y = -a + Math.PI / 2; }
 { const rug = new THREE.Mesh(new THREE.CircleGeometry(5.2, 40), mat('#a37cff')); rug.rotation.x = -Math.PI / 2; rug.position.set(MC.x, 0.01, MC.z); scene.add(rug); const rug2 = new THREE.Mesh(new THREE.RingGeometry(5.2, 5.6, 40), mat('#ffffff')); rug2.rotation.x = -Math.PI / 2; rug2.position.set(MC.x, 0.015, MC.z); scene.add(rug2); }
 signBoard(MC.x, 6.5, MC.z - MC.R - 2.5, 0, 7, 1.4, textSign([['MUSICAL CHAIRS', 70, '#a37cff']], 512, 128), false);
 // a giant speaker that bounces to the music
@@ -2017,16 +2019,22 @@ for (let i = 0; i < 8; i++) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.visible = false; scene.add(g);
   chairPool.push(g);
 }
-function chairSpot(i, n) { const a = i / n * Math.PI * 2 + 0.4; return { x: MC.x + Math.cos(a) * 3.3, z: MC.z + Math.sin(a) * 3.3, a }; }
-function layoutChairs(n) {
-  chairPool.forEach((g, i) => { g.visible = i < n; if (i < n) { const c = chairSpot(i, n); g.position.set(c.x, 0, c.z); g.rotation.y = Math.atan2(Math.cos(c.a), Math.sin(c.a)) + Math.PI; } });
+function chairSpot(i, n) { return MC.spots[i] || { x: MC.x, z: MC.z, a: 0 }; }
+// random places for the chairs (the same on everyone's screen, because it comes from the round's code)
+function makeSpots(n, seed) {
+  const r = seededRand(String(seed)); r(); const out = [];
+  for (let i = 0; i < n; i++) { let best = null; for (let k = 0; k < 40; k++) { const a = r() * Math.PI * 2, d = 2 + Math.sqrt(r()) * (MC.R - 3.5), c = { x: MC.x + Math.cos(a) * d, z: MC.z + Math.sin(a) * d, a: r() * Math.PI * 2 }; if (out.every(o => Math.hypot(o.x - c.x, o.z - c.z) > 2.6)) { best = c; break; } best = c; } out.push(best); }
+  MC.spots = out; return out;
 }
-function seatAt(p, i, n) { const c = chairSpot(i, n); p.pos.set(MC.x + Math.cos(c.a) * 3.45, 0.55, MC.z + Math.sin(c.a) * 3.45); p.vel.set(0, 0, 0); p.facing = Math.atan2(Math.cos(c.a), Math.sin(c.a)); p.seated = true; }
-function mcStart() { SP.mc = { ph: 'music', t: 9 + Math.random() * 3, n: Math.max(1, SP.entities.length - 1), occ: [], ri: 0 }; SP.outKeys = []; layoutChairs(SP.mc.n); music.start(); }
+function layoutChairs(n) {
+  chairPool.forEach((g, i) => { const show = i < n && !!MC.spots[i]; if (show && !g.visible) g.scale.setScalar(0.05); g.visible = show; if (show) { const c = MC.spots[i]; g.position.set(c.x, 0, c.z); g.rotation.y = c.a; } });
+}
+function seatAt(p, i, n) { const c = chairSpot(i, n); p.pos.set(c.x + Math.sin(c.a) * 0.12, 0.55, c.z + Math.cos(c.a) * 0.12); p.vel.set(0, 0, 0); p.facing = c.a; p.seated = true; }
+function mcStart() { SP.mc = { ph: 'music', t: 9 + Math.random() * 3, n: Math.max(1, SP.entities.length - 1), occ: [], ri: 0 }; SP.outKeys = []; layoutChairs(0); music.start(); }
 function mcHost(dt) {
   const M = SP.mc; M.t -= dt;
   if (M.ph === 'music') {
-    if (M.t <= 0) { M.ph = 'grab'; M.t = 6; M.occ = new Array(M.n).fill(null); music.stop(); sfx.scratch(); $('big').textContent = 'SIT!'; $('big').style.display = 'block'; setTimeout(() => { if ($('big').textContent === 'SIT!') $('big').style.display = 'none'; }, 900); for (const e of SP.entities) if (e.bot) e.react = 0.15 + (1 - e.skill) * 0.9 * Math.random(); }
+    if (M.t <= 0) { M.ph = 'grab'; M.t = 7; M.occ = new Array(M.n).fill(null); makeSpots(M.n, SP.round + ':' + M.ri); layoutChairs(M.n); music.stop(); sfx.scratch(); $('big').textContent = 'SIT!'; $('big').style.display = 'block'; setTimeout(() => { if ($('big').textContent === 'SIT!') $('big').style.display = 'none'; }, 900); for (const e of SP.entities) if (e.bot) e.react = 0.15 + (1 - e.skill) * 0.9 * Math.random(); }
   } else if (M.ph === 'grab') {
     for (const e of SP.entities) {
       if (!e.alive || M.occ.includes(e)) continue;
@@ -2040,7 +2048,7 @@ function mcHost(dt) {
     }
   } else if (M.ph === 'sit' && M.t <= 0) {
     for (const e of SP.entities) if (e.p) e.p.seated = false;
-    M.ri++; M.n = Math.max(1, aliveCount() - 1); M.occ = []; M.ph = 'music'; M.t = 6 + Math.random() * 6; layoutChairs(M.n);
+    M.ri++; M.n = Math.max(1, aliveCount() - 1); M.occ = []; M.ph = 'music'; M.t = 6 + Math.random() * 6; layoutChairs(0);
     if (aliveCount() > 1) music.start();
   }
 }
@@ -2048,10 +2056,13 @@ function mcBot(b, dt) {
   const p = b.p, M = SP.mc;
   if (!M || p.seated) return [0, 0, 0];
   if (M.ph === 'music') {
-    // walk round the chairs
-    const a = Math.atan2(p.pos.z - MC.z, p.pos.x - MC.x) + 0.6, r = 5.3 + Math.sin(b.skill * 50 + SP.elapsed) * 0.6;
-    const tx = MC.x + Math.cos(a) * r, tz = MC.z + Math.sin(a) * r; let wx = tx - p.pos.x, wz = tz - p.pos.z; const d = Math.hypot(wx, wz) || 1;
-    return [wx / d, wz / d, 0.55];
+    // dance about the arena
+    b.wand = (b.wand ?? Math.random() * 6.28) + (Math.random() - 0.5) * dt * 3;
+    let wx = Math.cos(b.wand), wz = Math.sin(b.wand);
+    const ex = p.pos.x - MC.x, ez = p.pos.z - MC.z, r = Math.hypot(ex, ez);
+    if (r > MC.R - 3) { wx -= ex / r * 1.5; wz -= ez / r * 1.5; b.wand = Math.atan2(wz, wx); }
+    if (p.grounded && Math.random() < dt * 0.5) p.buffer = 0.1;
+    const l = Math.hypot(wx, wz) || 1; return [wx / l, wz / l, 0.5];
   }
   if (M.ph === 'grab') {
     if (b.react > 0) { b.react -= dt; return [0, 0, 0.3]; }
@@ -2504,7 +2515,7 @@ function leaveSpinner() {
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.6.1'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.6.2'; requestLock();
 }
 $('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
@@ -2820,7 +2831,7 @@ function hostState() {
     pl: SP.pl, n: SP.entities.length, al: isFin(G) ? SP.finOrder.length : aliveCount(),
     ci: G === 'race' ? COURSES.indexOf(CRS) : undefined,
     th: G === 'tnt' && SP.tnt && SP.tnt.holder && SP.tnt.holder !== 'done' ? entKey(SP.tnt.holder) : '', fz: G === 'tnt' && SP.tnt ? r2(Math.max(0, SP.tnt.fuse)) : 0,
-    mc: G === 'chairs' && SP.mc ? { p: SP.mc.ph, n: SP.mc.n, o: (SP.mc.occ || []).map(e => e ? entKey(e) : ''), t: r2(SP.mc.t) } : null,
+    mc: G === 'chairs' && SP.mc ? { r: SP.mc.ri, p: SP.mc.ph, n: SP.mc.n, o: (SP.mc.occ || []).map(e => e ? entKey(e) : ''), t: r2(SP.mc.t) } : null,
     out: SP.outKeys || [],
     bt: SP.entities.filter(e => e.bot).map(e => [r2(e.p.pos.x), r2(e.p.pos.y), r2(e.p.pos.z), r2(e.p.facing), (isFin(G) || e.alive) ? 1 : 0, e.p.launched ? 1 : 0, e.p.grounded ? 1 : 0, e.p.seated ? 1 : 0]),
     res: SP.res || null,
@@ -2888,7 +2899,8 @@ function updateRoundClient(dt) {
   if (Array.isArray(g.out)) for (const k of g.out) { if (NET.seenOut && NET.seenOut.has(k)) continue; (NET.seenOut = NET.seenOut || new Set()).add(k); if (G === 'tnt') { const q = keyPos(k); if (q) boom(q.clone()); } if (k === NET.myLabel && me.alive) { NET.outAt = SP.elapsed; eliminate(me); netSendPresence(true); } }
   if (G === 'tnt') player.speedMul = g.th === NET.myLabel ? 1.12 : 1;
   if (G === 'chairs' && g.mc) {
-    if (g.mc.n !== NET.mcN) { NET.mcN = g.mc.n; layoutChairs(g.mc.n); }
+    const want = g.mc.p === 'music' ? 0 : g.mc.n, key = want + ':' + g.mc.r;
+    if (key !== NET.mcN) { NET.mcN = key; if (want) makeSpots(want, SP.round + ':' + g.mc.r); layoutChairs(want); }
     if (g.mc.p === 'music' && mode === 'play') { if (!music.on && aliveCount() > 0 && me.alive) music.start(); player.seated = false; }
     else { if (music.on) { music.stop(); if (g.mc.p === 'grab') { sfx.scratch(); $('big').textContent = 'SIT!'; $('big').style.display = 'block'; setTimeout(() => { if ($('big').textContent === 'SIT!') $('big').style.display = 'none'; }, 900); } } }
     const mi = Array.isArray(g.mc.o) ? g.mc.o.indexOf(NET.myLabel) : -1;
@@ -3154,6 +3166,7 @@ function frame() {
   animateHero(dt, t);
   player.dashCool = (player.dashCool || 0) - dt; player.pushCool = (player.pushCool || 0) - dt;
   updateBooms(dt); updatePuffs(dt); tntVisual(t); updateAbilityHud();
+  for (const cg of chairPool) if (cg.visible && cg.scale.x < 1) cg.scale.setScalar(Math.min(1, cg.scale.x + dt * 5));
   speaker.scale.setScalar(music.on ? 1 + Math.abs(Math.sin(t * 7.3)) * 0.06 : 1);
   if (window.__trophyStar) window.__trophyStar.rotation.y = t * 1.5;
   if (panelOpen && !$('skins').classList.contains('hidden')) renderPreview(dt, t);
