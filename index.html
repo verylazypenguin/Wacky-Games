@@ -79,14 +79,14 @@
 </style>
 </head>
 <body>
-<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.6</div></div>
+<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.6.1</div></div>
 <div id="timer"></div>
 <div id="big"></div>
 <div id="prompt"></div>
 <button id="lobbyBtn">⟵ Return to lobby <span>(Q)</span></button>
 <div id="toast"></div>
-<div id="abil"><div class="ab" id="abDash"><span class="ic">⚡</span><span class="cd"></span><span class="key">Shift · dash</span></div><div class="ab" id="abPush"><span class="ic">✋</span><span class="cd"></span><span class="key">F · push</span></div></div>
-<div id="crosshint">WASD move · Space jump/dive · Shift dash · F push · E use · L locker · R respawn · Esc free mouse</div>
+<div id="abil"><div class="ab" id="abPush"><span class="ic">✋</span><span class="cd"></span><span class="key">Right-click · push</span></div></div>
+<div id="crosshint">WASD move · Space jump/dive · Right-click push · E use · L locker · R respawn · Esc free mouse</div>
 
 <div id="start" class="overlay">
   <div class="card">
@@ -99,15 +99,14 @@
       <tr><td>Space, then Space again</td><td>jump, then dive in mid-air (great for long gaps)</td></tr>
       <tr><td>E</td><td>use: play pads, locker</td></tr>
       <tr><td>L</td><td>open your locker (skins) from anywhere in the lobby</td></tr>
-      <tr><td>Shift</td><td>dash (every 3 seconds)</td></tr>
-      <tr><td>F</td><td>push whoever is in front of you (every 3 seconds)</td></tr>
+      <tr><td>Right-click</td><td>push whoever is in front of you (every 3 seconds)</td></tr>
       <tr><td>Q</td><td>leave the parkour, back to the lobby</td></tr>
       <tr><td>R</td><td>respawn (in the Obstacle Course: back to your checkpoint)</td></tr>
       <tr><td>O</td><td>play online with friends</td></tr>
       <tr><td>Esc</td><td>free the mouse</td></tr>
     </table>
     <button class="btn" id="go">Play</button>
-    <div class="small">New in v0.6: TNT Tag, Musical Chairs and Glass Bridge, three different Obstacle Courses, plus dash (Shift) and push (F)!</div>
+    <div class="small">New in v0.6: TNT Tag, Musical Chairs and Glass Bridge, three different Obstacle Courses, plus push (right-click)!</div>
   </div>
 </div>
 
@@ -1297,7 +1296,8 @@ function requestLock() {
   try { const r = renderer.domElement.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
 }
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; });
-renderer.domElement.addEventListener('mousedown', () => { audio(); if (!locked) requestLock(); dragging = true; });
+renderer.domElement.addEventListener('mousedown', e => { audio(); if (e.button === 2) { playerPush(); return; } if (!locked) requestLock(); dragging = true; });
+window.addEventListener('contextmenu', e => { if (started && !panelOpen) e.preventDefault(); });
 addEventListener('mouseup', () => { dragging = false; });
 let dragging = false;
 addEventListener('mousemove', e => {
@@ -1319,8 +1319,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' && mode === 'lobby') interact();
   if (e.code === 'KeyO' && mode === 'lobby') openOnline();
   if (e.code === 'KeyL' && mode === 'lobby') openSkins();
-  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) playerDash();
-  if (e.code === 'KeyF' && !e.repeat) playerPush();
   if (e.code === 'KeyR' && mode === 'lobby') respawn();
   if (e.code === 'KeyR' && mode === 'play' && SP.game === 'race') { const me = SP.entities.find(x => x.me); if (me && !me.finished) { raceSpawnFor(me); sfx.poof(); } }
 });
@@ -1974,7 +1972,7 @@ function tntBot(b, dt) {
   if (holder) {
     let best = null, bd = 1e9;
     for (const e of SP.entities) { if (e === b || !e.alive) continue; const q = entPos(e), d = Math.hypot(q.x - p.pos.x, q.z - p.pos.z); if (d < bd) { bd = d; best = q; } }
-    if (best) { wx = best.x - p.pos.x; wz = best.z - p.pos.z; if (bd < 3.5 && (p.dashCool || 0) <= 0 && Math.random() < b.skill * 0.08) tryDashFor(b.p, wx, wz); }
+    if (best) { wx = best.x - p.pos.x; wz = best.z - p.pos.z; }
   } else {
     const hp = entPos(T.holder), dx = p.pos.x - hp.x, dz = p.pos.z - hp.z, d = Math.hypot(dx, dz) || 1;
     if (d < 10) { wx = dx / d; wz = dz / d; b.str = b.str || (Math.random() < 0.5 ? 1 : -1); wx += -dz / d * 0.6 * b.str; wz += dx / d * 0.6 * b.str; if (Math.random() < dt * 0.3) b.str *= -1; }
@@ -1982,7 +1980,6 @@ function tntBot(b, dt) {
     // keep away from the walls
     const ex = p.pos.x - TNT.x, ez = p.pos.z - TNT.z;
     if (Math.abs(ex) > TNT.half - 3) wx -= Math.sign(ex) * 1.5; if (Math.abs(ez) > TNT.half - 3) wz -= Math.sign(ez) * 1.5;
-    if (d < 2.6 && (p.dashCool || 0) <= 0 && Math.random() < b.skill * 0.1) tryDashFor(b.p, wx, wz);
   }
   const l = Math.hypot(wx, wz) || 1;
   if (p.grounded && Math.random() < dt * 0.4) p.buffer = 0.1;
@@ -2062,7 +2059,6 @@ function mcBot(b, dt) {
     for (let i = 0; i < M.n; i++) { if (M.occ[i]) continue; const c = chairSpot(i, M.n), d = Math.hypot(c.x - p.pos.x, c.z - p.pos.z) + (b.noise = b.noise ?? Math.random() * 1.5); if (d < bd) { bd = d; best = i; } }
     if (best < 0) return [0, 0, 0];
     const c = chairSpot(best, M.n); let wx = c.x - p.pos.x, wz = c.z - p.pos.z; const d = Math.hypot(wx, wz) || 1;
-    if (d > 3 && (p.dashCool || 0) <= 0 && Math.random() < b.skill * 0.15) tryDashFor(p, wx, wz);
     return [wx / d, wz / d, 1];
   }
   return [0, 0, 0];
@@ -2239,7 +2235,7 @@ function updateAbilityHud() {
   const show = started && !panelOpen && (mode === 'lobby' || mode === 'play');
   $('abil').style.display = show ? 'flex' : 'none';
   if (!show) return;
-  for (const [id, v] of [['abDash', player.dashCool || 0], ['abPush', player.pushCool || 0]]) {
+  for (const [id, v] of [['abPush', player.pushCool || 0]]) {
     const el = $(id), k = Math.max(0, v) / COOL;
     el.style.setProperty('--k', k); el.classList.toggle('ready', k <= 0);
     el.querySelector('.cd').textContent = k > 0 ? Math.ceil(v) : '';
@@ -2508,7 +2504,7 @@ function leaveSpinner() {
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.6'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.6.1'; requestLock();
 }
 $('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
@@ -3200,7 +3196,7 @@ requestAnimationFrame(frame);
 window.__moverZ = () => movers[0].m.position.z;
 window.__sim = (n, dt, keysFn) => { for (let i = 0; i < n; i++) { if (keysFn) keysFn(i * dt); updateCourse(dt); physics(dt / 2, true); physics(dt / 2, false); } return { x: player.pos.x, y: player.pos.y, z: player.pos.z, g: player.grounded, d: player.diving }; };
 window.__press = (code) => { const P = player; if (code === 'Space') { if (!P.grounded && P.coyote <= 0 && !P.diving && P.airJumped && !nearGround()) startDive(); else P.buffer = CONFIG.jumpBuffer; } };
-window.__wr = { get CRSname() { return CRS.name; }, GB, glassTiles, get tnt() { return SP.tnt; }, get mc() { return SP.mc; }, playerPush, playerDash, PV, rebuildLocker() { buildSkinsPanel(); }, giveTrophies, drawTrophyBoard, startRound, hexTiles, raceDoors, RC, SPL, progressCode, loadProgress, get game() { return SP.game; }, tickRound(n, dt, fn) { for (let i = 0; i < n; i++) { if (fn) fn(i * dt); updateRound(dt); } return { mode, elapsed: +SP.elapsed.toFixed(1), alive: SP.entities.filter(e => e.alive).map(e => e.name), fin: (SP.finOrder || []).map(e => e.name + ':' + e.finT.toFixed(1)) }; }, NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
+window.__wr = { get CRSname() { return CRS.name; }, GB, glassTiles, get tnt() { return SP.tnt; }, get mc() { return SP.mc; }, playerPush, PV, rebuildLocker() { buildSkinsPanel(); }, giveTrophies, drawTrophyBoard, startRound, hexTiles, raceDoors, RC, SPL, progressCode, loadProgress, get game() { return SP.game; }, tickRound(n, dt, fn) { for (let i = 0; i < n; i++) { if (fn) fn(i * dt); updateRound(dt); } return { mode, elapsed: +SP.elapsed.toFixed(1), alive: SP.entities.filter(e => e.alive).map(e => e.name), fin: (SP.finOrder || []).map(e => e.name + ':' + e.finT.toFixed(1)) }; }, NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
 </script>
 </body>
 </html>
