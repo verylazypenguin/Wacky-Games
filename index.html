@@ -9,7 +9,7 @@
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"Baloo 2",system-ui,sans-serif;user-select:none;-webkit-user-select:none;color:#2a2350}
-  canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+  body > canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
   .overlay{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;background:rgba(40,30,90,.35);z-index:10;padding:20px;overflow-y:auto}
   .overlay > .card{margin:auto}
   .overlay.hidden{display:none}
@@ -29,8 +29,29 @@
   #prompt{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);background:#fff;color:#2a2350;font-weight:800;padding:8px 18px;border-radius:14px;box-shadow:0 5px 0 #5b4bc4;z-index:5;display:none;white-space:nowrap}
   #toast{position:fixed;left:50%;top:20%;transform:translateX(-50%) scale(.9);background:#ffd23f;color:#2a2350;font-weight:800;font-size:1.3rem;padding:12px 24px;border-radius:18px;box-shadow:0 6px 0 #d19a00;z-index:6;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;text-align:center}
   #toast.show{opacity:1;transform:translateX(-50%) scale(1)}
-  #skins .card{max-width:680px;text-align:left;max-height:92vh;overflow-y:auto}
-  #skins h2{margin:0 0 4px;color:#ff5fa2;font-size:2rem}
+  #skins h2{margin:0 0 6px;color:#ff5fa2;font-size:2.2rem}
+  .lk{max-width:1040px;width:96vw;display:flex;gap:20px;text-align:left;max-height:94vh;padding:20px 22px}
+  .lkL{flex:0 0 300px;display:flex;flex-direction:column;align-items:center}
+  #lkView{width:300px;height:360px;border-radius:22px;background:radial-gradient(circle at 50% 38%,#ffffff 0,#efeaff 55%,#ddd4ff 100%);cursor:grab;touch-action:none}
+  .lkHint{color:#8a84b8;font-weight:600;font-size:.85rem;margin-top:4px}
+  .lkTro{margin-top:10px;background:#fff3c4;border-radius:14px;padding:6px 14px;font-weight:800;color:#8a5a00;font-size:1.1rem}
+  .lkR{flex:1;min-width:0;display:flex;flex-direction:column}
+  .lkTabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tab{border:0;border-radius:14px;padding:8px 14px;background:#f0edfb;font:800 1rem "Baloo 2",sans-serif;color:#5b4bc4;cursor:pointer}
+  .tab.sel{background:#ff5fa2;color:#fff;box-shadow:0 4px 0 #c23a78}
+  .lkNote{color:#8a84b8;font-weight:600;font-size:.9rem;margin:8px 0 0;min-height:1.2em}
+  .lkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;overflow-y:auto;padding:4px 4px 8px;margin-top:8px;max-height:58vh}
+  .lkGrid h4{grid-column:1/-1;margin:6px 0 0;color:#5b4bc4}
+  .tile{border:3px solid #e4e0fa;border-radius:16px;background:#faf9ff;padding:10px 6px 8px;text-align:center;cursor:pointer;font:700 .9rem "Baloo 2",sans-serif;color:#2a2350;position:relative;line-height:1.15}
+  .tile:hover{border-color:#c9bff7;transform:translateY(-2px)}
+  .tile .ic{font-size:2.1rem;line-height:1.25;display:block}
+  .tile .swc{width:38px;height:38px;border-radius:50%;margin:2px auto 4px;border:3px solid rgba(0,0,0,.12)}
+  .tile.sel{border-color:#ff5fa2;background:#fff0f7;box-shadow:0 0 0 3px #ffd0e6}
+  .tile.locked{opacity:.62}
+  .tile.locked .ic,.tile.locked .swc{filter:grayscale(.85)}
+  .tile .badge{position:absolute;top:4px;right:5px;font-size:.68rem;background:#5b4bc4;color:#fff;border-radius:8px;padding:1px 6px}
+  .tile.new .badge{background:#ff5fa2}
+  @media (max-width:760px){.lk{flex-direction:column;overflow-y:auto}.lkL{flex:none}#lkView{width:200px;height:240px}.lkGrid{max-height:none}}
   .row{margin:10px 0}
   .row b{display:block;color:#5b4bc4;margin-bottom:6px}
   .opts{display:flex;flex-wrap:wrap;gap:8px}
@@ -51,13 +72,13 @@
 </style>
 </head>
 <body>
-<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.4</div></div>
+<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.5</div></div>
 <div id="timer"></div>
 <div id="big"></div>
 <div id="prompt"></div>
 <button id="lobbyBtn">⟵ Return to lobby <span>(Q)</span></button>
 <div id="toast"></div>
-<div id="crosshint">WASD move · Mouse look · Space jump · Space again to dive · E use · R respawn · Esc free mouse</div>
+<div id="crosshint">WASD move · Mouse look · Space jump · Space again to dive · E use · L locker · R respawn · Esc free mouse</div>
 
 <div id="start" class="overlay">
   <div class="card">
@@ -68,14 +89,15 @@
       <tr><td>Mouse</td><td>turn the camera</td></tr>
       <tr><td>Space</td><td>jump</td></tr>
       <tr><td>Space, then Space again</td><td>jump, then dive in mid-air (great for long gaps)</td></tr>
-      <tr><td>E</td><td>use: skins booth, locker, play pads</td></tr>
+      <tr><td>E</td><td>use: play pads, locker</td></tr>
+      <tr><td>L</td><td>open your locker (skins) from anywhere in the lobby</td></tr>
       <tr><td>Q</td><td>leave the parkour, back to the lobby</td></tr>
       <tr><td>R</td><td>respawn (in the Obstacle Course: back to your checkpoint)</td></tr>
       <tr><td>O</td><td>play online with friends</td></tr>
       <tr><td>Esc</td><td>free the mouse</td></tr>
     </table>
     <button class="btn" id="go">Play</button>
-    <div class="small">New in v0.4: Spleef (pad 2) and the Obstacle Course (pad 3), alone or online with friends.</div>
+    <div class="small">New in v0.5: lots of new skins, a full locker menu (press L) and trophies! Finish in the top 3 to earn 🏆 and unlock special skins.</div>
   </div>
 </div>
 
@@ -85,7 +107,7 @@
     <h2 style="margin:0 0 4px;color:#ff5fa2;font-size:2rem">Play online</h2>
     <p id="onStatus" style="display:none;background:#fff3c4;border-radius:12px;padding:8px 12px;font-weight:600"></p>
     <div id="onOut">
-      <p style="color:#6a62a8;font-weight:500;margin:4px 0 12px">Make a room and tell your friends the code, or type a friend's code to join them. Your name comes from the skins booth.</p>
+      <p style="color:#6a62a8;font-weight:500;margin:4px 0 12px">Make a room and tell your friends the code, or type a friend's code to join them. Your name comes from your locker (press L).</p>
       <button class="btn" id="onCreate">Create a room</button>
       <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input id="onCode" maxlength="6" placeholder="CODE" style="font:800 1.2rem 'Baloo 2',sans-serif;border:3px solid #e4e0fa;border-radius:12px;padding:6px 12px;width:140px;text-transform:uppercase;color:#2a2350">
@@ -113,23 +135,27 @@
 </div>
 
 <div id="skins" class="overlay hidden">
-  <div class="card">
-    <h2>Skins</h2>
-    <div style="color:#6a62a8;font-weight:500">All free. Special ones unlock from quests.</div>
-    <div class="row"><b>Your name (for the leaderboard)</b><input id="nameIn" maxlength="14" style="font:700 1.05rem 'Baloo 2',sans-serif;border:3px solid #e4e0fa;border-radius:12px;padding:6px 12px;width:240px;color:#2a2350"></div>
-    <div class="row"><b>Outfit (full body)</b><div class="opts" id="optOutfit"></div></div>
-    <div class="row" id="outfitNote" style="display:none;color:#8a84b8;font-weight:600">Your outfit covers your colour and pattern. Pick "None" to use them again.</div>
-    <div class="row"><b>Colour</b><div class="opts" id="optColour"></div></div>
-    <div class="row"><b>Pattern</b><div class="opts" id="optPattern"></div></div>
-    <div class="row"><b>Hat</b><div class="opts" id="optHat"></div></div>
-    <div class="row"><b>Backpack</b><div class="opts" id="optBack"></div></div>
-    <div class="row"><b>Trail</b><div class="opts" id="optTrail"></div></div>
-    <div class="row" style="border-top:2px solid #f0edfb;padding-top:10px"><b>Move your progress</b>
-      <div style="color:#8a84b8;font-weight:600;font-size:.92rem;margin-bottom:6px">The Claude version and the website each keep their own times, skins and quests. Copy your code from one, then paste it into the other and press Load.</div>
-      <textarea id="progCode" rows="3" spellcheck="false" style="width:100%;font:600 .8rem monospace;border:3px solid #e4e0fa;border-radius:12px;padding:6px 10px;color:#2a2350;resize:vertical" placeholder="Your progress code appears here, or paste one in"></textarea>
-      <div class="opts" style="margin-top:6px"><button class="opt" id="progShow">Show my code</button><button class="opt" id="progCopy">Copy</button><button class="opt" id="progLoad">Load pasted code</button></div>
+  <div class="card lk">
+    <div class="lkL">
+      <h2>Locker</h2>
+      <canvas id="lkView" width="600" height="720"></canvas>
+      <div class="lkHint">Drag to spin your character</div>
+      <div id="lkTrophies" class="lkTro"></div>
     </div>
-    <div style="text-align:center;margin-top:14px"><button class="btn" id="skinsDone">Done</button></div>
+    <div class="lkR">
+      <div id="lkTabs" class="lkTabs"></div>
+      <div id="lkNote" class="lkNote"></div>
+      <div id="lkGrid" class="lkGrid"></div>
+      <div id="lkSettings" style="display:none">
+        <div class="row"><b>Your name (for the leaderboards)</b><input id="nameIn" maxlength="14" style="font:700 1.05rem 'Baloo 2',sans-serif;border:3px solid #e4e0fa;border-radius:12px;padding:6px 12px;width:240px;color:#2a2350"></div>
+        <div class="row" style="border-top:2px solid #f0edfb;padding-top:10px"><b>Move your progress</b>
+          <div style="color:#8a84b8;font-weight:600;font-size:.92rem;margin-bottom:6px">The Claude version and the website each keep their own times, trophies, skins and quests. Copy your code from one, then paste it into the other and press Load.</div>
+          <textarea id="progCode" rows="3" spellcheck="false" style="width:100%;font:600 .8rem monospace;border:3px solid #e4e0fa;border-radius:12px;padding:6px 10px;color:#2a2350;resize:vertical" placeholder="Your progress code appears here, or paste one in"></textarea>
+          <div class="opts" style="margin-top:6px"><button class="opt" id="progShow">Show my code</button><button class="opt" id="progCopy">Copy</button><button class="opt" id="progLoad">Load pasted code</button></div>
+        </div>
+      </div>
+      <div style="text-align:right;margin-top:12px"><button class="btn" id="skinsDone">Done</button></div>
+    </div>
   </div>
 </div>
 
@@ -292,14 +318,22 @@ GAMES.forEach((gm, i) => {
 box(-11, 3, -16, 1, 6, 1, '#5b4bc4'); box(11, 3, -16, 1, 6, 1, '#5b4bc4'); box(0, 6.3, -16, 23, 0.8, 1, '#5b4bc4');
 signBoard(0, 7.6, -15.4, 0, 6, 1.4, textSign([['PLAY', 96, '#ff5fa2']], 512, 128), false);
 
-// SKINS BOOTH (east side)
-const boothCol = '#ff8fc6';
-box(15, 1.6, -3, 5, 3.2, 0.4, boothCol); box(15, 1.6, 3, 5, 3.2, 0.4, boothCol); box(17.3, 1.6, 0, 0.4, 3.2, 6.4, boothCol);
-box(15, 3.4, 0, 5.4, 0.4, 6.8, '#ffd23f');
-const mirror = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshStandardMaterial({ color: '#d8f2ff', roughness: 0.05, metalness: 0.6 }));
-mirror.position.set(17.08, 1.5, 0); mirror.rotation.y = -Math.PI / 2; scene.add(mirror);
-signBoard(12.4, 4.5, 0, -Math.PI / 2, 3.6, 1.2, textSign([['SKINS', 96, '#ff5fa2']], 512, 160), false);
-const SKIN_ZONE = { x: 15, z: 0, r: 2.6 };
+// TROPHY BOARD (east of the plaza, where the old skins booth was)
+const trophyCanvas = document.createElement('canvas'); trophyCanvas.width = 512; trophyCanvas.height = 700;
+const trophyTex = new THREE.CanvasTexture(trophyCanvas); trophyTex.colorSpace = THREE.SRGBColorSpace;
+signBoard(12, 3.75, -2, -Math.PI / 2, 3.2, 4.4, trophyTex);
+{ // a big golden trophy next to the board
+  const gold = mat('#ffcc33', { metalness: 0.7, roughness: 0.25 });
+  box(12.6, 0.5, 3.2, 1.6, 1, 1.6, '#5b4bc4');
+  const g = new THREE.Group(); g.position.set(12.6, 1, 3.2); scene.add(g);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 0.3, 24), gold); base.position.y = 0.15; g.add(base);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 0.6, 16), gold); stem.position.y = 0.6; g.add(stem);
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.25, 0.9, 28, 1, true), new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 0.7, roughness: 0.25, side: THREE.DoubleSide })); cup.position.y = 1.35; g.add(cup);
+  for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.06, 8, 20), gold); h.position.set(sx * 0.62, 1.4, 0); h.rotation.y = Math.PI / 2; g.add(h); }
+  const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), mat('#ff5fa2', { emissive: '#ff2a8a', emissiveIntensity: 0.5 })); star.position.y = 2.0; star.name = 'tstar'; g.add(star);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  window.__trophyStar = star;
+}
 
 // QUESTS BOARD (west of the plaza)
 const questTexCanvas = document.createElement('canvas'); questTexCanvas.width = 512; questTexCanvas.height = 760;
@@ -423,19 +457,79 @@ function drawLeaderboard() {
   g.fillStyle = '#8a84b8'; g.font = '600 22px "Baloo 2", sans-serif';
   g.fillText(typeof NET !== 'undefined' && NET.room ? 'Best times of everyone in your room' : 'Best time per player · on this computer', W / 2, H - 24);
   lbTex.needsUpdate = true;
+  if (typeof drawTrophyBoard === 'function' && typeof trophyCanvas !== 'undefined') drawTrophyBoard();
 }
+function trophyRows() {
+  const online = typeof NET !== 'undefined' && NET.room;
+  if (online) return NET.peers.filter(pr => pr.kind === 'viewer' && (pr.sameTab || (pr.presence && pr.presence.v === 1)))
+    .map(pr => ({ name: pr.sameTab ? cleanName(save.name) : cleanName(pr.presence.n), n: pr.sameTab ? (save.trophies | 0) : (pr.presence.tr | 0), me: !!pr.sameTab }));
+  const rows = [{ name: cleanName(save.name), n: save.trophies | 0, me: true }];
+  for (const [nm] of (typeof BOTS !== 'undefined' ? BOTS : [])) rows.push({ name: nm, n: (save.botTrophies || {})[nm] | 0 });
+  return rows;
+}
+function drawTrophyBoard() {
+  const g = trophyCanvas.getContext('2d'), W = 512, H = 700;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = '#fffaf0'; g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 36); g.fill();
+  g.lineWidth = 10; g.strokeStyle = '#ffb020'; g.stroke();
+  g.textAlign = 'center'; g.fillStyle = '#e09a00'; g.font = '800 64px "Baloo 2", sans-serif'; g.fillText('🏆 TROPHIES', W / 2, 80);
+  const online = typeof NET !== 'undefined' && NET.room;
+  g.fillStyle = '#5b4bc4'; g.font = '800 34px "Baloo 2", sans-serif'; g.fillText(online ? 'ROOM ' + (NET.code || '').toUpperCase() : 'YOU VS THE COMPUTER', W / 2, 124);
+  const rows = trophyRows().sort((a, b) => b.n - a.n).slice(0, 8);
+  rows.forEach((r, i) => {
+    const y = 152 + i * 56;
+    g.fillStyle = r.me ? '#ffe9a8' : i === 0 ? '#fff3c4' : '#ffffff';
+    g.beginPath(); g.roundRect(30, y, W - 60, 48, 14); g.fill();
+    if (r.me) { g.strokeStyle = '#ff5fa2'; g.lineWidth = 4; g.stroke(); }
+    g.fillStyle = '#2a2350'; g.font = '800 30px "Baloo 2", sans-serif';
+    g.textAlign = 'left'; g.fillText((['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + '  ' + r.name.slice(0, 14) + (r.me ? ' (you)' : ''), 46, y + 34);
+    g.textAlign = 'right'; g.fillText(r.n + ' 🏆', W - 46, y + 34);
+  });
+  g.textAlign = 'center'; g.fillStyle = '#8a84b8'; g.font = '700 23px "Baloo 2", sans-serif';
+  g.fillText('Earn trophies in Spinner, Spleef and the', W / 2, H - 80);
+  g.fillText('Obstacle Course: 1st 🏆3 · 2nd 🏆2 · 3rd 🏆1', W / 2, H - 52);
+  g.fillStyle = '#ff5fa2'; g.fillText('Trophies unlock skins in your locker!', W / 2, H - 22);
+  trophyTex.needsUpdate = true;
+}
+// give trophies for a finishing place (k = 0 for 1st)
+const TROPHY_FOR = [3, 2, 1];
+function allSkinItems() { return [...OUTFITS, ...HATS, ...BACKS, ...TRAILS]; }
+function giveTrophies(n) {
+  if (!n) return '';
+  const before = save.trophies | 0; save.trophies = before + n; persist();
+  const fresh = allSkinItems().filter(it => it.trophies && it.trophies > before && it.trophies <= save.trophies && (it.quest === undefined || save.done[it.quest]));
+  drawTrophyBoard(); if (typeof NET !== 'undefined' && NET.room) netSendPresence(true);
+  let html = '<p class="unlock" style="background:#fff3c4;color:#8a5a00">+' + n + ' 🏆 troph' + (n === 1 ? 'y' : 'ies') + '! You have ' + save.trophies + '.</p>';
+  if (fresh.length) html += '<p class="unlock">New skin' + (fresh.length > 1 ? 's' : '') + ' unlocked: <b>' + fresh.map(f => (ICONS[f.id] || '') + ' ' + f.name).join(', ') + '</b>! Open your locker (L).</p>';
+  return html;
+}
+function nextTrophyGoal() { const t = save.trophies | 0; const nx = allSkinItems().filter(it => it.trophies && it.trophies > t).sort((a, b) => a.trophies - b.trophies)[0]; return nx ? (ICONS[nx.id] || '') + ' ' + nx.name + ' at ' + nx.trophies + ' 🏆' : null; }
 const tele = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.12, 10, 40), mat('#b18cff', { emissive: '#7a4dff', emissiveIntensity: 0.6 }));
 tele.rotation.x = Math.PI / 2; tele.position.set(-86, 6.85, 4.1); scene.add(tele);
 
 /* ---------- skins ---------- */
-const COLOURS = [['Bubblegum', '#ff7eb6'], ['Sky', '#5cc0ff'], ['Lime', '#8ee05a'], ['Sunny', '#ffd23f'], ['Grape', '#a37cff'], ['Tangerine', '#ff9a3c'], ['Mint', '#5fe0c0'], ['Cloud', '#f4f4f8'], ['Golden', '#f2b52a', 'chest']];
+const COLOURS = [['Bubblegum', '#ff7eb6'], ['Sky', '#5cc0ff'], ['Lime', '#8ee05a'], ['Sunny', '#ffd23f'], ['Grape', '#a37cff'], ['Tangerine', '#ff9a3c'], ['Mint', '#5fe0c0'], ['Cloud', '#f4f4f8'], ['Golden', '#f2b52a', 'chest'], ['Cherry', '#ff4d5e'], ['Navy', '#4a5bc4'], ['Cocoa', '#9a6544'], ['Shadow', '#3d3756'], ['Peach', '#ffb59a']];
 const PATTERNS = ['Plain', 'Stripes', 'Spots', 'Stars', 'Rainbow'];
 const PATTERN_LOCK = { Rainbow: 'chest' };
 const HATS = [
   { id: 'none', name: 'None' }, { id: 'cone', name: 'Party cone' }, { id: 'prop', name: 'Propeller cap' }, { id: 'top', name: 'Top hat' },
+  { id: 'beanie', name: 'Beanie' }, { id: 'chef', name: 'Chef hat' }, { id: 'bunny', name: 'Bunny ears' }, { id: 'cowboy', name: 'Cowboy hat' },
+  { id: 'viking', name: 'Viking helmet' }, { id: 'flower', name: 'Flower crown' },
+  { id: 'wizard', name: 'Wizard hat', trophies: 8 },
   { id: 'crown', name: 'Golden crown', quest: 0 },
   { id: 'halo', name: 'Halo', quest: 1 },
 ];
+const TRAILS = [{ id: 'none', name: 'None' }, { id: 'bubbles', name: 'Bubbles' }, { id: 'comet', name: 'Comet trail', quest: 2 }, { id: 'hearts', name: 'Hearts', trophies: 5 }, { id: 'stars', name: 'Stars', trophies: 10 }];
+const ICONS = { none: '🚫', cone: '🎉', prop: '🚁', top: '🎩', beanie: '🧶', chef: '👨‍🍳', bunny: '🐰', cowboy: '🤠', viking: '🪖', flower: '🌸', wizard: '🧙', crown: '👑', halo: '😇',
+  dino: '🦖', robot: '🤖', bee: '🐝', penguin: '🐧', flame: '🔥', rainbow: '🌈', ninja: '🥷', pirate: '🏴‍☠️', shark: '🦈', cat: '🐱', pumpkin: '🎃', strawberry: '🍓', snowman: '⛄', frog: '🐸', astronaut: '🧑‍🚀', knight: '🛡️', unicorn: '🦄', galaxy: '🌌', gold: '🏆',
+  shovel: '⛏️', wings: '🦋', teddy: '🧸', jetpack: '🚀', cape: '🦸', bubbles: '🫧', comet: '☄️', hearts: '💖', stars: '⭐' };
+// is an item locked? what unlocks it?
+function lockOf(item) {
+  if (item.quest !== undefined && !save.done[item.quest]) return { locked: true, badge: '📜 Quest', why: 'Quest: ' + QUESTS[item.quest].text };
+  if (item.trophies && (save.trophies | 0) < item.trophies) return { locked: true, badge: '🏆 ' + item.trophies, why: 'Earn ' + item.trophies + ' trophies to unlock (you have ' + (save.trophies | 0) + '). Finish 1st, 2nd or 3rd in Spinner, Spleef or the Obstacle Course.' };
+  if (item.chest && !save.chest) return { locked: true, badge: '🎁 Chest', why: 'Open the treasure chest at the end of the parkour!' };
+  return { locked: false };
+}
 const QUESTS = [
   { text: 'Finish the parkour course', reward: 'Golden crown', live: true },
   { text: 'Finish parkour in under 60 s', reward: 'Halo', live: true },
@@ -444,11 +538,11 @@ const QUESTS = [
   { text: 'Finish the obstacle course', reward: 'Rainbow suit outfit', live: true },
   { text: 'Speedrun: parkour in under 15 s', reward: 'Flame suit outfit', live: true },
 ];
-let save = { colour: 0, pattern: 0, hat: 'none', outfit: 'none', back: 'none', done: [false, false, false, false, false, false], best: null, name: 'Player', runs: [] };
+let save = { colour: 0, pattern: 0, hat: 'none', outfit: 'none', back: 'none', trail: 'none', trophies: 0, botTrophies: {}, done: [false, false, false, false, false, false], best: null, name: 'Player', runs: [] };
 try { const s = JSON.parse(localStorage.getItem('wobbleRumble') || 'null'); if (s) save = Object.assign(save, s); } catch (e) {}
 function grantEarnedRewards() {
   const best = Math.min(save.best ?? Infinity, ...(save.runs2 || []).map(r => r.t));
-  if (best < 15 && !save.done[5]) { save.done[5] = true; persist(); setTimeout(() => toast('Your ' + best.toFixed(2) + ' s run counts for the speedrun quest!<br>Flame suit unlocked. Try it at the skins booth.', 5000), 1500); }
+  if (best < 15 && !save.done[5]) { save.done[5] = true; persist(); setTimeout(() => toast('Your ' + best.toFixed(2) + ' s run counts for the speedrun quest!<br>Flame suit unlocked. Try it in your locker (press L).', 5000), 1500); }
   if (best < 60 && !save.done[1]) { save.done[1] = true; persist(); }
 }
 function persist() { try { localStorage.setItem('wobbleRumble', JSON.stringify(save)); } catch (e) {} }
@@ -538,11 +632,41 @@ function makeHat(id) {
     for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; const s = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 8), gold); s.position.set(Math.cos(a) * 0.31, 0.15, Math.sin(a) * 0.31); g.add(s); const j = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(i % 2 ? '#ff5fa2' : '#3fb8ff')); j.position.set(Math.cos(a) * 0.32, -0.03, Math.sin(a) * 0.32); g.add(j); }
   } else if (id === 'halo') {
     const h = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.05, 10, 32), mat('#fff3a0', { emissive: '#ffe066', emissiveIntensity: 0.9 })); h.rotation.x = Math.PI / 2; h.position.y = 0.17; g.add(h);
+  } else if (id === 'beanie') {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.47, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.4), mat('#ff5f8a')); c.position.y = -0.36; g.add(c);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.07, 8, 28), mat('#ffd23f')); rim.rotation.x = Math.PI / 2; rim.position.y = -0.2; g.add(rim);
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), mat('#ffffff')); pom.position.y = 0.14; g.add(pom);
+  } else if (id === 'chef') {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 24), mat('#ffffff')); band.position.y = -0.02; g.add(band);
+    for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5; const puff = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), mat('#ffffff')); puff.position.set(Math.cos(a) * 0.17, 0.2, Math.sin(a) * 0.17); g.add(puff); }
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), mat('#ffffff')); top.position.y = 0.28; g.add(top);
+  } else if (id === 'bunny') {
+    for (const sx of [-1, 1]) {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), mat('#ffffff')); e.scale.set(1, 3.2, 0.55); e.position.set(sx * 0.15, 0.22, -0.02); e.rotation.z = -sx * 0.18; g.add(e);
+      const inn = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), mat('#ffa8c8')); inn.scale.set(1, 3.6, 0.4); inn.position.set(sx * 0.15, 0.22, 0.035); inn.rotation.z = -sx * 0.18; g.add(inn);
+    }
+  } else if (id === 'cowboy') {
+    const br = mat('#9a6544');
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.04, 28), br); brim.position.y = -0.08; brim.scale.z = 0.85; g.add(brim);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.29, 0.32, 20), br); crown.position.y = 0.08; g.add(crown);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.292, 0.292, 0.06, 20), mat('#2a2350')); band.position.y = -0.03; g.add(band);
+  } else if (id === 'viking') {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.43, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.6), mat('#a9b2bf', { metalness: 0.5, roughness: 0.35 })); c.position.y = -0.3; g.add(c);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.05, 8, 28), mat('#c99a3c', { metalness: 0.5 })); rim.rotation.x = Math.PI / 2; rim.position.y = -0.16; g.add(rim);
+    for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.38, 12), mat('#fff3d6')); h.position.set(sx * 0.4, 0.06, 0); h.rotation.z = -sx * 1.0; g.add(h); }
+  } else if (id === 'flower') {
+    const cols = ['#ff7eb6', '#ffd23f', '#a37cff', '#ffffff', '#ff9a3c', '#5cc0ff'];
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; const f = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), mat(cols[i % 6])); f.position.set(Math.cos(a) * 0.33, -0.08, Math.sin(a) * 0.33); g.add(f); const l = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat('#4fae3c')); l.scale.set(1.6, 0.5, 1); l.position.set(Math.cos(a + 0.3) * 0.35, -0.1, Math.sin(a + 0.3) * 0.35); g.add(l); }
+  } else if (id === 'wizard') {
+    const pm = mat('#5b4bc4');
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.04, 28), pm); brim.position.y = -0.08; g.add(brim);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 24), pm); cone.position.set(0, 0.32, -0.04); cone.rotation.x = -0.15; g.add(cone);
+    for (let i = 0; i < 6; i++) { const st = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat('#ffe066', { emissive: '#ffcc00', emissiveIntensity: 0.8 })); const a = i * 1.7, y = 0.05 + (i % 3) * 0.17; st.position.set(Math.cos(a) * (0.27 - y * 0.25), y, Math.sin(a) * (0.27 - y * 0.25) - 0.03); g.add(st); }
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
-const BACKS = [{ id: 'none', name: 'None' }, { id: 'shovel', name: 'Shovel backpack', quest: 3 }];
+const BACKS = [{ id: 'none', name: 'None' }, { id: 'wings', name: 'Butterfly wings' }, { id: 'teddy', name: 'Teddy pal' }, { id: 'shovel', name: 'Shovel backpack', quest: 3 }, { id: 'jetpack', name: 'Jetpack', trophies: 8 }, { id: 'cape', name: 'Hero cape', trophies: 15 }];
 function makeBack(id) {
   const g = new THREE.Group();
   if (id === 'shovel') {
@@ -555,6 +679,38 @@ function makeBack(id) {
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.05), mat('#a8784e')); grip.position.y = -0.5; sh.add(grip);
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.03), mat('#c7ced8', { metalness: 0.6, roughness: 0.3 })); blade.position.y = 0.62; sh.add(blade);
     g.add(sh);
+  } else if (id === 'wings') {
+    const wm = c => new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Group(); w.position.set(sx * 0.08, 1.1, -0.5); w.name = 'bwing'; w.userData.sx = sx;
+      const up = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), wm('#ff9ad0')); up.scale.set(1, 0.78, 1); up.position.set(sx * 0.4, 0.2, 0); w.add(up);
+      const lo = new THREE.Mesh(new THREE.CircleGeometry(0.28, 16), wm('#a37cff')); lo.position.set(sx * 0.3, -0.22, 0.01); w.add(lo);
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), wm('#ffffff')); dot.position.set(sx * 0.48, 0.22, 0.02); w.add(dot);
+      g.add(w);
+    }
+  } else if (id === 'teddy') {
+    const fur = mat('#b07a4f'), light = mat('#e6c39a');
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 12), fur); body.position.set(0, 0.95, -0.62); g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 12), fur); head.position.set(0, 1.27, -0.6); g.add(head);
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), fur); e.position.set(sx * 0.12, 1.42, -0.6); g.add(e); const a = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), fur); a.position.set(sx * 0.24, 1.02, -0.5); g.add(a); }
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), light); snout.position.set(0, 1.24, -0.76); g.add(snout);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), mat('#2a2350')); nose.position.set(0, 1.26, -0.83); g.add(nose);
+    for (const sx of [-1, 1]) { const ey = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), mat('#2a2350')); ey.position.set(sx * 0.06, 1.32, -0.75); g.add(ey); }
+  } else if (id === 'jetpack') {
+    const metal = mat('#c7ced8', { metalness: 0.6, roughness: 0.3 });
+    for (const sx of [-1, 1]) {
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.6, 14), metal); t.position.set(sx * 0.15, 1.0, -0.6); g.add(t);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat('#ff5f5f')); cap.position.set(sx * 0.15, 1.3, -0.6); g.add(cap);
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 10), new THREE.MeshStandardMaterial({ color: '#ffb020', emissive: '#ff6a00', emissiveIntensity: 1, transparent: true, opacity: 0.85 })); fl.position.set(sx * 0.15, 0.55, -0.6); fl.rotation.x = Math.PI; fl.name = 'flick'; g.add(fl);
+    }
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.1), mat('#3d3756')); strap.position.set(0, 1.05, -0.53); g.add(strap);
+  } else if (id === 'cape') {
+    const cm = new THREE.MeshStandardMaterial({ color: '#e63b5a', side: THREE.DoubleSide, roughness: 0.7 });
+    const geo = new THREE.PlaneGeometry(0.85, 1.15, 4, 8); geo.translate(0, -0.575, 0);
+    { const pa = geo.attributes.position; for (let i = 0; i < pa.count; i++) { const y = pa.getY(i), k = 0.6 + 0.4 * (-y / 1.15); pa.setX(i, pa.getX(i) * k); pa.setZ(i, -Math.pow(-y / 1.15, 2) * 0.12 + Math.abs(pa.getX(i)) * 0.25); } geo.computeVertexNormals(); }
+    const cape = new THREE.Mesh(geo, cm); cape.position.set(0, 1.52, -0.47); cape.rotation.x = 0.12; cape.name = 'cape'; g.add(cape);
+    const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), mat('#ffd23f', { metalness: 0.5 })); clasp.position.set(0, 1.5, 0.3); g.add(clasp);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 6, 24, Math.PI), mat('#e63b5a')); collar.position.set(0, 1.52, -0.05); collar.rotation.set(Math.PI / 2, 0, Math.PI); g.add(collar);
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
@@ -569,6 +725,19 @@ const OUTFITS = [
   { id: 'penguin', name: 'Penguin', arms: '#22232b', legs: '#ff9a2e' },
   { id: 'flame', name: 'Flame suit', arms: '#ff6a1a', legs: '#ff4a1a', quest: 5 },
   { id: 'rainbow', name: 'Rainbow suit', arms: '#ff5f8a', legs: '#7b6cff', quest: 4 },
+  { id: 'ninja', name: 'Ninja', arms: '#26232f', legs: '#26232f' },
+  { id: 'pirate', name: 'Pirate', arms: '#f4efe2', legs: '#3b3550' },
+  { id: 'shark', name: 'Shark', arms: '#6f8ea8', legs: '#6f8ea8' },
+  { id: 'cat', name: 'Cat', arms: '#f29a3c', legs: '#f29a3c' },
+  { id: 'pumpkin', name: 'Pumpkin', arms: '#3f8a2e', legs: '#3f8a2e' },
+  { id: 'strawberry', name: 'Strawberry', arms: '#3fa64a', legs: '#3fa64a' },
+  { id: 'snowman', name: 'Snowman', arms: '#7a5230', legs: '#f4f6fb' },
+  { id: 'frog', name: 'Frog', arms: '#5fbf4a', legs: '#5fbf4a', trophies: 3 },
+  { id: 'astronaut', name: 'Astronaut', arms: '#eef1f6', legs: '#eef1f6', trophies: 6 },
+  { id: 'knight', name: 'Knight', arms: '#aab3bf', legs: '#8d96a3', trophies: 12 },
+  { id: 'unicorn', name: 'Unicorn', arms: '#fff4fb', legs: '#fff4fb', trophies: 20 },
+  { id: 'galaxy', name: 'Galaxy', arms: '#3a1d6e', legs: '#2a1450', trophies: 30 },
+  { id: 'gold', name: 'Golden statue', arms: '#f2b52a', legs: '#e0a020', trophies: 50 },
 ];
 // the body texture wraps round the bean; its front (where the face is) sits at the left and right edges
 function outfitTexture(id) {
@@ -594,6 +763,55 @@ function outfitTexture(id) {
     const rc = ['#ff5f5f', '#ff9a3c', '#ffd23f', '#7bdc7a', '#3fb8ff', '#a37cff'];
     for (let i = 0; i < 12; i++) { g.fillStyle = rc[i % 6]; g.fillRect(i * W / 12, 0, W / 12 + 1, H); }
     g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 30; i++) { const x = (i * 97) % W, y = (i * 59) % H; g.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? 2 : 7, a = k * Math.PI / 4; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.fill(); }
+  } else if (id === 'ninja') {
+    g.fillStyle = '#26232f'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#3a3646'; g.lineWidth = 6; for (let x = -H; x < W; x += 46) { g.beginPath(); g.moveTo(x, H); g.lineTo(x + H * 0.6, 0); g.stroke(); }
+    front(x => { g.fillStyle = '#3a3646'; g.beginPath(); g.moveTo(x - 70, 120); g.lineTo(x, 170); g.lineTo(x + 70, 120); g.lineTo(x + 70, 140); g.lineTo(x, 190); g.lineTo(x - 70, 140); g.fill(); });
+  } else if (id === 'pirate') {
+    for (let y = 0; y < H; y += 32) { g.fillStyle = (y / 32) % 2 ? '#f4efe2' : '#d8344a'; g.fillRect(0, y, W, 32); }
+    g.fillStyle = '#5a3a22'; g.fillRect(0, 168, W, 26);
+    front(x => { g.fillStyle = '#ffd23f'; g.fillRect(x - 18, 164, 36, 34); g.fillStyle = '#5a3a22'; g.fillRect(x - 9, 173, 18, 16); });
+  } else if (id === 'shark') {
+    g.fillStyle = '#6f8ea8'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#f4f6fb'; front(x => { g.beginPath(); g.ellipse(x, H * 0.7, 110, 110, 0, 0, 7); g.fill(); });
+    g.strokeStyle = '#5a768e'; g.lineWidth = 5; for (const sx of [130, 150, 170, 342, 362, 382]) { g.beginPath(); g.moveTo(sx, 110); g.quadraticCurveTo(sx - 8, 135, sx, 160); g.stroke(); }
+  } else if (id === 'cat') {
+    g.fillStyle = '#f29a3c'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#d4741e'; for (let x = 60; x < W - 40; x += 48) { if (x < 70 || x > W - 70) continue; g.beginPath(); g.moveTo(x - 10, 0); g.quadraticCurveTo(x + 14, 60, x - 6, 120); g.lineTo(x + 8, 120); g.quadraticCurveTo(x + 26, 60, x + 8, 0); g.fill(); }
+    g.fillStyle = '#ffe6c4'; front(x => { g.beginPath(); g.ellipse(x, H * 0.72, 80, 70, 0, 0, 7); g.fill(); });
+  } else if (id === 'pumpkin') {
+    g.fillStyle = '#ff8a1e'; g.fillRect(0, 0, W, H);
+    for (let x = 0; x < W; x += 64) { const gr = g.createLinearGradient(x, 0, x + 64, 0); gr.addColorStop(0, '#e06a0e'); gr.addColorStop(0.5, '#ffa040'); gr.addColorStop(1, '#e06a0e'); g.fillStyle = gr; g.fillRect(x, 0, 64, H); }
+  } else if (id === 'strawberry') {
+    g.fillStyle = '#ff3b4e'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#ffe27a'; for (let i = 0; i < 90; i++) { const x = (i * 83) % W, y = 60 + (i * 47) % (H - 70); g.beginPath(); g.ellipse(x, y, 4, 6, 0.3, 0, 7); g.fill(); }
+    g.fillStyle = '#3fa64a'; for (let x = 0; x < W; x += 40) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 20, 46); g.lineTo(x + 40, 0); g.fill(); }
+  } else if (id === 'snowman') {
+    g.fillStyle = '#f4f6fb'; g.fillRect(0, 0, W, H);
+    front(x => { g.fillStyle = '#2a2350'; for (const y of [150, 190, 228]) { g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); } });
+    g.fillStyle = '#dfe6f2'; for (let i = 0; i < 40; i++) { g.beginPath(); g.arc((i * 71) % W, (i * 37) % H, 3, 0, 7); g.fill(); }
+  } else if (id === 'frog') {
+    g.fillStyle = '#5fbf4a'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#e8f59a'; front(x => { g.beginPath(); g.ellipse(x, H * 0.72, 100, 90, 0, 0, 7); g.fill(); });
+    g.fillStyle = '#3f9a32'; for (let i = 0; i < 16; i++) { g.beginPath(); g.arc(140 + (i * 41) % 230, 20 + (i * 59) % 200, 8 + (i % 3) * 5, 0, 7); g.fill(); }
+  } else if (id === 'astronaut') {
+    g.fillStyle = '#eef1f6'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#c9d0db'; g.lineWidth = 5; for (const y of [96, 200]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    front(x => { g.fillStyle = '#5b6b80'; g.fillRect(x - 46, 128, 92, 54); for (let k = 0; k < 4; k++) { g.fillStyle = ['#ff5f5f', '#7bdc7a', '#3fb8ff', '#ffd23f'][k]; g.fillRect(x - 36 + k * 20, 140, 12, 12); } g.fillStyle = '#c9d0db'; g.fillRect(x - 36, 160, 72, 10); });
+    g.fillStyle = '#3f6fd8'; g.fillRect(150, 110, 34, 22); g.fillStyle = '#ff5f5f'; g.fillRect(328, 110, 34, 22);
+  } else if (id === 'knight') {
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#e2e7ee'); gr.addColorStop(1, '#9aa3b0'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#7d8794'; g.lineWidth = 4; for (const y of [60, 110, 160, 210]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    front(x => { g.fillStyle = '#c33a4a'; g.beginPath(); g.moveTo(x - 38, 112); g.lineTo(x + 38, 112); g.lineTo(x + 38, 160); g.lineTo(x, 200); g.lineTo(x - 38, 160); g.fill(); g.fillStyle = '#ffd23f'; g.fillRect(x - 5, 120, 10, 64); g.fillRect(x - 24, 140, 48, 10); });
+  } else if (id === 'unicorn') {
+    g.fillStyle = '#fff4fb'; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,170,220,0.6)'; for (let i = 0; i < 24; i++) { const x = (i * 97) % W, y = (i * 53) % H; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 3 : 8, a = k * Math.PI / 5; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.fill(); }
+  } else if (id === 'galaxy') {
+    const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#1b0f3e'); gr.addColorStop(0.5, '#4a1f8a'); gr.addColorStop(1, '#13234f'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (const [cx, cy, r, c] of [[120, 80, 90, 'rgba(255,90,200,0.35)'], [360, 170, 110, 'rgba(80,200,255,0.3)'], [250, 40, 70, 'rgba(160,110,255,0.35)']]) { const rg = g.createRadialGradient(cx, cy, 0, cx, cy, r); rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(0, 0, W, H); }
+    g.fillStyle = '#ffffff'; for (let i = 0; i < 120; i++) { g.globalAlpha = 0.4 + (i % 5) * 0.12; g.beginPath(); g.arc((i * 89) % W, (i * 43) % H, (i % 7 === 0) ? 2.6 : 1.2, 0, 7); g.fill(); } g.globalAlpha = 1;
+  } else if (id === 'gold') {
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#ffe58a'); gr.addColorStop(0.5, '#f2b52a'); gr.addColorStop(1, '#c8871a'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
   } else if (id === 'flame') {
     const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#5a0d0d'); gr.addColorStop(1, '#c4200f'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
     for (const [col, hgt] of [['#ff6a1a', 0.75], ['#ffb020', 0.5], ['#ffe066', 0.28]]) {
@@ -622,6 +840,51 @@ function outfitParts(id) {
     for (const sx of [-1, 1]) { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 6), mat('#2a2a2a')); a.position.set(sx * 0.13, 1.88, 0.12); a.rotation.set(0.3, 0, sx * -0.35); g.add(a); const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat('#2a2a2a')); b.position.set(sx * 0.19, 2.02, 0.17); g.add(b); }
   } else if (id === 'penguin') {
     for (const sx of [-1, 1]) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.3), mat('#ff9a2e')); f.position.set(sx * 0.2, 0.03, 0.1); g.add(f); }
+  } else if (id === 'ninja') {
+    const red = mat('#e63b4a');
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.492, 0.492, 0.1, 32, 1, true), red); belt.position.y = 0.72; g.add(belt);
+    const hb = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.04, 8, 32), red); hb.rotation.x = Math.PI / 2; hb.position.y = 1.52; g.add(hb);
+    for (const sx of [-1, 1]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.35, 0.02), red); t.position.set(sx * 0.07, 1.36, -0.48); t.rotation.z = sx * 0.4; g.add(t); }
+  } else if (id === 'pirate') {
+    const sash = new THREE.Mesh(new THREE.TorusGeometry(0.47, 0.035, 6, 30), mat('#ffd23f')); sash.position.y = 1.05; sash.rotation.set(Math.PI / 2 - 0.5, 0, 0); g.add(sash);
+  } else if (id === 'shark') {
+    const fm = mat('#6f8ea8');
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), fm); fin.scale.set(0.3, 1, 1); fin.position.set(0, 1.55, -0.38); fin.rotation.x = -0.5; g.add(fin);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 4), fm); tail.scale.set(0.25, 1, 1); tail.position.set(0, 0.5, -0.6); tail.rotation.x = -2.2; g.add(tail);
+    for (const sx of [-1, 1]) { const sf = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 4), fm); sf.scale.set(1, 1, 0.3); sf.position.set(sx * 0.5, 0.85, 0); sf.rotation.z = sx * 2.2; g.add(sf); }
+  } else if (id === 'cat') {
+    const om = mat('#f29a3c'), pk = mat('#ffb0c4');
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.24, 4), om); e.position.set(sx * 0.24, 1.75, 0.02); e.rotation.set(0, Math.PI / 4, -sx * 0.25); g.add(e); const i = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 4), pk); i.position.set(sx * 0.24, 1.72, 0.07); i.rotation.set(0, Math.PI / 4, -sx * 0.25); g.add(i); }
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.06, 8, 20, Math.PI * 1.1), om); tail.position.set(0, 0.85, -0.65); tail.rotation.set(0, Math.PI / 2, 0.4); g.add(tail);
+  } else if (id === 'pumpkin') {
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.24, 8), mat('#5a7a2a')); st.position.set(0, 1.86, 0); st.rotation.z = 0.25; g.add(st);
+    const lf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat('#3f8a2e')); lf.scale.set(1.3, 0.25, 0.8); lf.position.set(0.14, 1.8, 0.02); lf.rotation.z = -0.4; g.add(lf);
+  } else if (id === 'strawberry') {
+    const lm = mat('#3fa64a');
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; const l = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), lm); l.scale.set(1.5, 0.22, 0.6); l.position.set(Math.cos(a) * 0.2, 1.74, Math.sin(a) * 0.2); l.rotation.y = -a; g.add(l); }
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.16, 8), lm); st.position.y = 1.85; g.add(st);
+  } else if (id === 'snowman') {
+    const sc = mat('#e63b4a');
+    const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.08, 10, 30), sc); scarf.rotation.x = Math.PI / 2; scarf.position.y = 1.1; g.add(scarf);
+    const end = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.06), sc); end.position.set(0.22, 0.88, 0.4); end.rotation.set(0.25, 0, 0.1); g.add(end);
+  } else if (id === 'frog') {
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 12), mat('#5fbf4a')); e.position.set(sx * 0.2, 1.74, 0.12); g.add(e); const w = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), mat('#ffffff')); w.position.set(sx * 0.2, 1.77, 0.2); g.add(w); const pu = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), mat('#1d1838')); pu.position.set(sx * 0.2, 1.78, 0.28); g.add(pu); }
+  } else if (id === 'astronaut') {
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.22), mat('#d5dbe5')); pack.position.set(0, 1.05, -0.55); g.add(pack);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.06, 8, 30), mat('#c9d0db')); ring.rotation.x = Math.PI / 2; ring.position.y = 1.1; g.add(ring);
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.35, 6), mat('#8d96a3')); ant.position.set(-0.18, 1.5, -0.6); g.add(ant);
+    const lt = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat('#7bdc7a', { emissive: '#3fcf3f', emissiveIntensity: 0.8 })); lt.position.set(-0.18, 1.69, -0.6); g.add(lt);
+  } else if (id === 'knight') {
+    const metal = mat('#c7ced8', { metalness: 0.6, roughness: 0.3 });
+    for (const sx of [-1, 1]) { const sp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), metal); sp.position.set(sx * 0.45, 1.12, 0); sp.rotation.z = -sx * 0.5; g.add(sp); }
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.492, 0.492, 0.08, 32, 1, true), mat('#6a4a2a')); belt.position.y = 0.66; g.add(belt);
+  } else if (id === 'unicorn') {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.38, 12), mat('#ffd23f', { metalness: 0.4, roughness: 0.3 })); horn.position.set(0, 1.86, 0.18); horn.rotation.x = 0.35; g.add(horn);
+    const cols = ['#ff7eb6', '#ffb020', '#ffe14a', '#7bdc7a', '#5cc0ff', '#a37cff'];
+    for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(cols[i % 6])); m.position.set(0, 1.72 - i * 0.12, -0.4 - Math.sin(i * 0.45) * 0.08); g.add(m); }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 10), mat('#ff7eb6')); tail.position.set(0, 0.6, -0.62); tail.rotation.x = -2.1; g.add(tail);
+  } else if (id === 'galaxy') {
+    for (let i = 0; i < 2; i++) { const pl = new THREE.Mesh(new THREE.SphereGeometry(0.07 + i * 0.03, 12, 10), mat(i ? '#ffb020' : '#5cc0ff', { emissive: i ? '#ff7a00' : '#2080ff', emissiveIntensity: 0.6 })); pl.name = 'orbit'; pl.userData.k = i; g.add(pl); }
   } else if (id === 'flame') {
     const fm = new THREE.MeshStandardMaterial({ color: '#ffb020', emissive: '#ff6a00', emissiveIntensity: 0.9, transparent: true, opacity: 0.85 });
     for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(0.09 - i * 0.015, 0.32 - i * 0.05, 8), fm); f.position.set((i - 1) * 0.14, 1.83 + (i === 1 ? 0.06 : 0), 0); f.name = 'flick'; g.add(f); }
@@ -638,14 +901,16 @@ function applySkinTo(ch, s) {
   ch.hatSlot.clear(); if (s.hat && s.hat !== 'none' && HATS.some(h => h.id === s.hat)) ch.hatSlot.add(makeHat(s.hat));
   if (of.id !== 'none') {
     ch.bodyMat.map = outfitTexture(of.id); ch.bodyMat.color.set('#ffffff');
-    ch.bodyMat.metalness = of.id === 'robot' ? 0.45 : 0; ch.bodyMat.roughness = of.id === 'robot' ? 0.35 : 0.55;
-    ch.bodyMat.emissive = new THREE.Color(of.id === 'flame' ? '#3a0800' : '#000000');
+const shiny = { robot: [0.45, 0.35], knight: [0.55, 0.3], gold: [0.3, 0.3], astronaut: [0.1, 0.4] }[of.id] || [0, 0.55];
+    ch.bodyMat.metalness = shiny[0]; ch.bodyMat.roughness = shiny[1];
+    ch.bodyMat.emissive = new THREE.Color(of.id === 'flame' ? '#3a0800' : of.id === 'galaxy' ? '#150830' : of.id === 'gold' ? '#4a3000' : '#000000');
     ch.bodyMat.needsUpdate = true;
     ch.limbMat.color.set(of.arms); ch.legMat.color.set(of.legs);
+    ch.limbMat.metalness = ch.legMat.metalness = of.id === 'gold' ? 0.3 : of.id === 'knight' ? 0.4 : 0; ch.limbMat.roughness = ch.legMat.roughness = of.id === 'gold' ? 0.3 : 0.6;
     ch.outfitSlot.add(outfitParts(of.id));
     return;
   }
-  ch.bodyMat.emissive = new THREE.Color('#000000');
+  ch.bodyMat.emissive = new THREE.Color('#000000'); ch.limbMat.metalness = ch.legMat.metalness = 0;
   const ci = clamp(s.colour | 0, 0, COLOURS.length - 1), pi = clamp(s.pattern | 0, 0, PATTERNS.length - 1);
   const [cname, col] = COLOURS[ci];
   ch.bodyMat.map = patternTexture(col, PATTERNS[pi]); ch.bodyMat.color.set('#ffffff');
@@ -818,7 +1083,7 @@ $('lobbyBtn').addEventListener('click', e => { e.stopPropagation(); returnToLobb
 function openChest() {
   chestState.opening = true;
   sfx.fanfare(); confetti(chest.position);
-  if (!save.chest) { save.chest = true; persist(); toast('Treasure!<br>Unlocked: <b>Golden</b> colour and <b>Rainbow</b> pattern.<br>Try them at the skins booth.', 5000); }
+  if (!save.chest) { save.chest = true; persist(); toast('Treasure!<br>Unlocked: <b>Golden</b> colour and <b>Rainbow</b> pattern.<br>Try them in your locker (press L).', 5000); }
   else toast('The chest is empty, but you made it! Beat your time on the leaderboard.', 3000);
 }
 function stopParkour(keepTimer) { parkour.running = false; player.cpHit = false; player.checkpoint = null; if (!keepTimer) $('timer').style.display = 'none'; }
@@ -887,54 +1152,80 @@ const sfx = {
 /* ---------- UI ---------- */
 let toastT = null;
 function toast(html, ms = 2200) { const t = $('toast'); t.innerHTML = html; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
-function buildSkinsPanel() {
-  const oc = $('optColour'), op = $('optPattern'), oh = $('optHat'), ot = $('optTrail'), oo = $('optOutfit');
-  oc.innerHTML = ''; op.innerHTML = ''; oh.innerHTML = ''; ot.innerHTML = ''; oo.innerHTML = '';
-  const ob = $('optBack'); ob.innerHTML = '';
-  BACKS.forEach(bk => {
-    const locked = bk.quest !== undefined && !save.done[bk.quest];
-    const b = document.createElement('button'); b.className = 'opt' + ((save.back || 'none') === bk.id ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + bk.name : bk.name;
-    b.onclick = () => { if (locked) { toast('Locked. Quest: ' + QUESTS[bk.quest].text); return; } save.back = bk.id; persist(); applySkin(); buildSkinsPanel(); sfx.click(); }; ob.appendChild(b);
-  });
-  OUTFITS.forEach(of => {
-    const locked = of.quest !== undefined && !save.done[of.quest];
-    const b = document.createElement('button'); b.className = 'opt' + ((save.outfit || 'none') === of.id ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + of.name : of.name;
-    b.onclick = () => { if (locked) { toast('Locked. Quest: ' + QUESTS[of.quest].text); return; } save.outfit = of.id; persist(); applySkin(); buildSkinsPanel(); sfx.click(); }; oo.appendChild(b);
-  });
-  $('outfitNote').style.display = (save.outfit || 'none') !== 'none' ? 'block' : 'none';
-  oc.style.opacity = op.style.opacity = (save.outfit || 'none') !== 'none' ? 0.45 : 1;
-  [['none', 'None'], ['comet', 'Comet trail', 2]].forEach(([id, label, q]) => {
-    const locked = q !== undefined && !save.done[q];
-    const b = document.createElement('button'); b.className = 'opt' + ((save.trail || 'none') === id ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + label : label;
-    b.onclick = () => { if (locked) { toast('Locked. Quest: ' + QUESTS[q].text); return; } save.trail = id; persist(); buildSkinsPanel(); sfx.click(); }; ot.appendChild(b);
-  });
-  COLOURS.forEach(([name, col, lock], i) => {
-    const locked = lock === 'chest' && !save.chest;
-    const b = document.createElement('button'); b.className = 'opt' + (save.colour === i ? ' sel' : '') + (locked ? ' locked' : ''); b.title = locked ? name + ': open the treasure chest at the end of the parkour' : name;
-    const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = locked ? '#ddd' : col; b.appendChild(sw);
-    if (locked) b.appendChild(document.createTextNode('🔒'));
-    b.onclick = () => { if (locked) { toast('Locked. Open the treasure chest at the end of the parkour!'); return; } save.colour = i; save.outfit = 'none'; persist(); applySkin(); buildSkinsPanel(); sfx.click(); }; oc.appendChild(b);
-  });
-  PATTERNS.forEach((name, i) => {
-    const locked = PATTERN_LOCK[name] === 'chest' && !save.chest;
-    const b = document.createElement('button'); b.className = 'opt' + (save.pattern === i ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + name : name;
-    b.onclick = () => { if (locked) { toast('Locked. Open the treasure chest at the end of the parkour!'); return; } save.pattern = i; save.outfit = 'none'; persist(); applySkin(); buildSkinsPanel(); sfx.click(); }; op.appendChild(b);
-  });
-  HATS.forEach(h => {
-    const locked = h.quest !== undefined && !save.done[h.quest];
-    const b = document.createElement('button'); b.className = 'opt' + (save.hat === h.id ? ' sel' : '') + (locked ? ' locked' : '');
-    b.textContent = locked ? '🔒 ' + h.name : h.name;
-    if (locked) b.title = 'Quest: ' + QUESTS[h.quest].text;
-    b.onclick = () => { if (locked) { toast('Locked. Quest: ' + QUESTS[h.quest].text); return; } save.hat = h.id; persist(); applySkin(); buildSkinsPanel(); sfx.click(); };
-    oh.appendChild(b);
-  });
+const PATTERN_ICONS = { Plain: '⚪', Stripes: '〰️', Spots: '🔵', Stars: '✨', Rainbow: '🌈' };
+let lkTab = 'outfits';
+const LK_TABS = [['outfits', '👕 Outfits'], ['colours', '🎨 Colours'], ['hats', '🎩 Hats'], ['backs', '🎒 Backpacks'], ['trails', '✨ Trails'], ['settings', '⚙️ Name & code']];
+function lkTile(grid, { icon, swatch, name, sel, lock, onPick }) {
+  const b = document.createElement('button');
+  b.className = 'tile' + (sel ? ' sel' : '') + (lock.locked ? ' locked' : '');
+  if (swatch) { const sw = document.createElement('div'); sw.className = 'swc'; sw.style.background = swatch; b.appendChild(sw); }
+  else { const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = icon || '❔'; b.appendChild(ic); }
+  b.appendChild(document.createTextNode(name));
+  if (lock.locked) { const bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = lock.badge; b.appendChild(bd); b.title = lock.why; }
+  b.onclick = () => { if (lock.locked) { toast('🔒 ' + escapeHtml(name) + '<br><span style="font-size:1rem">' + escapeHtml(lock.why) + '</span>', 3200); sfx.bonk(); return; } onPick(); persist(); applySkin(); buildSkinsPanel(); sfx.click(); };
+  grid.appendChild(b);
 }
-function openSkins() { $('nameIn').value = save.name || 'Player'; panelOpen = true; if (document.pointerLockElement) document.exitPointerLock(); buildSkinsPanel(); $('skins').classList.remove('hidden'); }
+function buildSkinsPanel() {
+  const tabs = $('lkTabs'); tabs.innerHTML = '';
+  for (const [id, label] of LK_TABS) { const t = document.createElement('button'); t.className = 'tab' + (lkTab === id ? ' sel' : ''); t.textContent = label; t.onclick = () => { lkTab = id; buildSkinsPanel(); sfx.click(); }; tabs.appendChild(t); }
+  $('lkTrophies').textContent = '🏆 ' + (save.trophies | 0) + ' troph' + ((save.trophies | 0) === 1 ? 'y' : 'ies');
+  const grid = $('lkGrid'); grid.innerHTML = '';
+  const settings = lkTab === 'settings';
+  grid.style.display = settings ? 'none' : ''; $('lkSettings').style.display = settings ? 'block' : 'none';
+  const wearing = (save.outfit || 'none') !== 'none';
+  const notes = { outfits: 'Full-body outfits. Your face always shows. Special ones unlock with trophies 🏆 or quests 📜.', colours: wearing ? 'You are wearing an outfit, which covers your colour and pattern. Picking one here takes the outfit off.' : 'Pick a colour and a pattern.', hats: 'Hats sit on top of any outfit.', backs: 'Backpacks go on your back, with any outfit.', trails: 'Trails follow you when you run.', settings: '' };
+  $('lkNote').textContent = notes[lkTab];
+  if (lkTab === 'outfits') OUTFITS.forEach(of => lkTile(grid, { icon: ICONS[of.id], name: of.id === 'none' ? 'No outfit' : of.name, sel: (save.outfit || 'none') === of.id, lock: lockOf(of), onPick: () => { save.outfit = of.id; } }));
+  if (lkTab === 'colours') {
+    const h1 = document.createElement('h4'); h1.textContent = 'Colour'; grid.appendChild(h1);
+    COLOURS.forEach(([name, col, lk], i) => lkTile(grid, { swatch: col, name, sel: !wearing && save.colour === i, lock: lockOf({ chest: lk === 'chest' }), onPick: () => { save.colour = i; save.outfit = 'none'; } }));
+    const h2 = document.createElement('h4'); h2.textContent = 'Pattern'; grid.appendChild(h2);
+    PATTERNS.forEach((name, i) => lkTile(grid, { icon: PATTERN_ICONS[name], name, sel: !wearing && save.pattern === i, lock: lockOf({ chest: PATTERN_LOCK[name] === 'chest' }), onPick: () => { save.pattern = i; save.outfit = 'none'; } }));
+  }
+  if (lkTab === 'hats') HATS.forEach(h => lkTile(grid, { icon: ICONS[h.id], name: h.id === 'none' ? 'No hat' : h.name, sel: (save.hat || 'none') === h.id, lock: lockOf(h), onPick: () => { save.hat = h.id; } }));
+  if (lkTab === 'backs') BACKS.forEach(bk => lkTile(grid, { icon: ICONS[bk.id], name: bk.id === 'none' ? 'Nothing' : bk.name, sel: (save.back || 'none') === bk.id, lock: lockOf(bk), onPick: () => { save.back = bk.id; } }));
+  if (lkTab === 'trails') TRAILS.forEach(tr => lkTile(grid, { icon: ICONS[tr.id], name: tr.id === 'none' ? 'No trail' : tr.name, sel: (save.trail || 'none') === tr.id, lock: lockOf(tr), onPick: () => { save.trail = tr.id; } }));
+  if (PV.ch) applySkinTo(PV.ch, save);
+}
+// 3D preview of your character inside the locker
+const PV = { r: null, scene: null, cam: null, ch: null, yaw: 0.5, drag: null, auto: true };
+function initPreview() {
+  if (PV.r) return;
+  const cv = $('lkView');
+  PV.r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }); PV.r.setPixelRatio(Math.min(devicePixelRatio, 2)); PV.r.setSize(cv.clientWidth || 300, cv.clientHeight || 360, false);
+  PV.r.outputColorSpace = THREE.SRGBColorSpace;
+  PV.scene = new THREE.Scene();
+  PV.scene.add(new THREE.HemisphereLight('#ffffff', '#b8a8ff', 1.6));
+  const d = new THREE.DirectionalLight('#ffffff', 2.2); d.position.set(2, 4, 3); PV.scene.add(d);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, 0.25, 40), mat('#ffffff')); ped.position.y = -0.125; PV.scene.add(ped);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.05, 8, 48), mat('#ff5fa2')); rim.rotation.x = Math.PI / 2; PV.scene.add(rim);
+  PV.cam = new THREE.PerspectiveCamera(30, (cv.clientWidth || 300) / (cv.clientHeight || 360), 0.1, 50); PV.cam.position.set(0, 1.35, 5.2); PV.cam.lookAt(0, 0.95, 0);
+  PV.ch = makeCharacter(); PV.scene.add(PV.ch.root); applySkinTo(PV.ch, save);
+  cv.addEventListener('pointerdown', e => { PV.drag = e.clientX; PV.auto = false; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => { if (PV.drag !== null) { PV.yaw += (e.clientX - PV.drag) * 0.012; PV.drag = e.clientX; } });
+  const up = () => { PV.drag = null; cv.style.cursor = 'grab'; setTimeout(() => { if (PV.drag === null) PV.auto = true; }, 2500); };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+}
+function renderPreview(dt, t) {
+  if (!PV.r) return;
+  const cv = $('lkView'), w = cv.clientWidth, h = cv.clientHeight;
+  if (w && h && (cv.width !== Math.round(w * PV.r.getPixelRatio()) || cv.height !== Math.round(h * PV.r.getPixelRatio()))) { PV.r.setSize(w, h, false); PV.cam.aspect = w / h; PV.cam.updateProjectionMatrix(); }
+  if (PV.auto) PV.yaw += dt * 0.6;
+  const c = PV.ch; c.root.rotation.y = PV.yaw;
+  c.tilt.position.y = Math.abs(Math.sin(t * 2.2)) * 0.05; c.tilt.rotation.z = Math.sin(t * 1.5) * 0.04;
+  c.armL.rotation.set(Math.sin(t * 2.2) * 0.2, 0, -0.35 - Math.sin(t * 1.1) * 0.1); c.armR.rotation.set(-Math.sin(t * 2.2) * 0.2, 0, 0.35 + Math.sin(t * 1.1) * 0.1);
+  c.vx = 0; c.vz = 0; animExtras(c, t);
+  c.outfitSlot.traverse(o => { if (o.name === 'wing') o.rotation.y = Math.sign(o.position.x) * (0.5 + Math.sin(t * 60) * 0.35); if (o.name === 'flick') o.scale.y = 0.8 + Math.random() * 0.5; });
+  if (c.rainbow && c.bodyMat.map) c.bodyMat.map.offset.x = (t * 0.12) % 1;
+  const blade = c.hatSlot.getObjectByName('blade'); if (blade) blade.rotation.y += dt * 6;
+  PV.r.render(PV.scene, PV.cam);
+}
+function openSkins() { if (mode !== 'lobby') return; $('nameIn').value = save.name || 'Player'; panelOpen = true; if (document.pointerLockElement) document.exitPointerLock(); $('skins').classList.remove('hidden'); initPreview(); buildSkinsPanel(); }
 function closeSkins() { const nm = $('nameIn').value.trim(); if (nm) { save.name = nm; persist(); } panelOpen = false; $('skins').classList.add('hidden'); for (const k in keys) keys[k] = false; requestLock(); }
 $('skinsDone').onclick = closeSkins;
 // progress codes: carry times, skins and quests between the Claude version and the website
 function progressCode() {
-  const keep = { name: save.name, colour: save.colour, pattern: save.pattern, hat: save.hat, outfit: save.outfit, back: save.back, trail: save.trail, done: save.done, chest: !!save.chest, runs2: save.runs2 || [], best: save.best, course: save.course };
+  const keep = { trophies: save.trophies | 0, botTrophies: save.botTrophies || {}, name: save.name, colour: save.colour, pattern: save.pattern, hat: save.hat, outfit: save.outfit, back: save.back, trail: save.trail, done: save.done, chest: !!save.chest, runs2: save.runs2 || [], best: save.best, course: save.course };
   return 'WG1-' + btoa(unescape(encodeURIComponent(JSON.stringify(keep))));
 }
 function loadProgress(code) {
@@ -944,6 +1235,8 @@ function loadProgress(code) {
   const num = (v, a, b) => typeof v === 'number' && isFinite(v) && v >= a && v <= b;
   if (Array.isArray(d.done)) for (let i = 0; i < save.done.length; i++) if (d.done[i] === true) save.done[i] = true;
   if (d.chest === true) save.chest = true;
+  if (num(d.trophies, 0, 100000)) save.trophies = Math.max(save.trophies | 0, d.trophies | 0);
+  if (d.botTrophies && typeof d.botTrophies === 'object') { save.botTrophies = save.botTrophies || {}; for (const [nm] of BOTS) if (num(d.botTrophies[nm], 0, 100000)) save.botTrophies[nm] = Math.max(save.botTrophies[nm] | 0, d.botTrophies[nm] | 0); }
   const runs = Array.isArray(d.runs2) ? d.runs2.filter(r => r && typeof r.name === 'string' && num(r.t, 3, 3600)).map(r => ({ name: r.name.slice(0, 20), t: r.t })) : [];
   save.runs2 = bestPerPlayer((save.runs2 || []).concat(runs));
   if (num(d.best, 3, 3600) && d.course === 2) { if (save.course !== 2) { save.course = 2; save.best = null; } save.best = save.best === null || save.best === undefined ? d.best : Math.min(save.best, d.best); }
@@ -953,8 +1246,8 @@ function loadProgress(code) {
   if (HATS.some(h => h.id === d.hat)) save.hat = d.hat;
   if (OUTFITS.some(o => o.id === d.outfit)) save.outfit = d.outfit;
   if (BACKS.some(b => b.id === d.back)) save.back = d.back;
-  if (d.trail === 'comet' || d.trail === 'none') save.trail = d.trail;
-  persist(); grantEarnedRewards(); applySkin(); drawQuestBoard(); drawLeaderboard(); buildSkinsPanel(); $('nameIn').value = save.name || 'Player';
+  if (TRAILS.some(t => t.id === d.trail)) save.trail = d.trail;
+  persist(); grantEarnedRewards(); applySkin(); drawQuestBoard(); drawLeaderboard(); drawTrophyBoard(); buildSkinsPanel(); $('nameIn').value = save.name || 'Player';
   if (NET.room) netSendPresence(true);
   sfx.fanfare(); toast('Progress loaded!<br>Your times, skins and quests are here now.', 3500);
 }
@@ -967,13 +1260,12 @@ function updatePrompt() {
   const p = player.pos;
   nearThing = null;
   const d2 = (z) => Math.hypot(p.x - z.x, p.z - z.z);
-  if (p.y < 1 && d2(SKIN_ZONE) < SKIN_ZONE.r) nearThing = 'skins';
-  else if (p.y < 1 && d2(LOCKER_ZONE) < LOCKER_ZONE.r) nearThing = 'locker';
+  if (p.y < 1 && d2(LOCKER_ZONE) < LOCKER_ZONE.r) nearThing = 'locker';
   else for (const pad of pads) if (p.y < 1 && Math.hypot(p.x - pad.x, p.z - pad.z) < pad.r) nearThing = pad;
   const el = $('prompt');
   if (!nearThing) { el.style.display = 'none'; return; }
   el.style.display = 'block';
-  el.textContent = nearThing === 'skins' ? '[E] Change your skin' : nearThing === 'locker' ? '[E] Open your locker' : nearThing.game.when === 'now' ? (NET.room ? '[E] Play ' + nearThing.game.name + ' with your room' : '[E] Play ' + nearThing.game.name + ' against 5 computer players') : '[E] ' + nearThing.game.name + ' (opens in ' + nearThing.game.when + ')';
+  el.textContent = nearThing === 'skins' ? '[E] Change your skin' : nearThing === 'locker' ? '[E] Open your locker (skins)' : nearThing.game.when === 'now' ? (NET.room ? '[E] Play ' + nearThing.game.name + ' with your room' : '[E] Play ' + nearThing.game.name + ' against 5 computer players') : '[E] ' + nearThing.game.name + ' (opens in ' + nearThing.game.when + ')';
 }
 function interact() {
   if (!nearThing) return;
@@ -1001,7 +1293,7 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && !typing) e.preventDefault();
   if (!started) return;
   if (onlineOpen) { if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter') netJoin($('onCode').value); return; } if (e.code === 'Escape' || e.code === 'KeyO') closeOnline(); return; }
-  if (panelOpen) { if (typing) { if (e.code === 'Enter' && e.target.tagName === 'INPUT') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE') closeSkins(); return; }
+  if (panelOpen) { if (typing) { if (e.code === 'Enter' && e.target.tagName === 'INPUT') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE' || e.code === 'KeyL') closeSkins(); return; }
   keys[e.code] = true;
   if (e.repeat) return;
   audio();
@@ -1009,6 +1301,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyQ') { if (mode !== 'lobby') { leaveSpinner(); return; } returnToLobby(); }
   if (e.code === 'KeyE' && mode === 'lobby') interact();
   if (e.code === 'KeyO' && mode === 'lobby') openOnline();
+  if (e.code === 'KeyL' && mode === 'lobby') openSkins();
   if (e.code === 'KeyR' && mode === 'lobby') respawn();
   if (e.code === 'KeyR' && mode === 'play' && SP.game === 'race') { const me = SP.entities.find(x => x.me); if (me && !me.finished) { raceSpawnFor(me); sfx.poof(); } }
 });
@@ -1585,7 +1878,7 @@ function roundQuest(game, won, finished) {
   if (game === 'race' && finished) { q = 4; what = 'Rainbow suit'; }
   if (q < 0 || save.done[q]) return '';
   save.done[q] = true; persist(); drawQuestBoard();
-  return '<p class="unlock">Quest complete: <b>' + what + '</b> unlocked! Try it at the skins booth.</p>';
+  return '<p class="unlock">Quest complete: <b>' + what + '</b> unlocked! Try it in your locker (press L).</p>';
 }
 function endSpinner() {
   mode = 'results';
@@ -1595,10 +1888,18 @@ function endSpinner() {
   const youWon = order.some(e => e.me && won(e));
   const meE = SP.entities.find(e => e.me);
   if (SP.online && SP.isHost) { SP.res = order.slice(0, 6).map(e => [e.name, e.me ? NET.myLabel : (e.label || ''), won(e) ? 1 : 0, e.finished ? Math.round(e.finT * 100) / 100 : null]); netSendPresence(true); $('resAgain').style.display = 'none'; }
-  const rows = order.map((e, k) => `<tr class="${e.me ? 'me' : ''}"><td>${won(e) ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(e.name)}${e.me ? ' (you)' : ''}${SP.game === 'race' ? (e.finished ? ' · ' + e.finT.toFixed(1) + ' s' : ' · not finished') : ''}</td><td>+${pts[k] || 0}</td></tr>`).join('');
+  const trophyCell = (e, k) => { const n = (SP.game !== 'race' || e.finished) ? (TROPHY_FOR[won(e) ? 0 : k] || 0) : 0; return n ? ' 🏆' + n : ''; };
+  const rows = order.map((e, k) => `<tr class="${e.me ? 'me' : ''}"><td>${won(e) ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(e.name)}${e.me ? ' (you)' : ''}${SP.game === 'race' ? (e.finished ? ' · ' + e.finT.toFixed(1) + ' s' : ' · not finished') : ''}</td><td>${trophyCell(e, k)}</td></tr>`).join('');
   let extra = SP.online ? '<p style="color:#6a62a8;font-weight:600">Step on a pad in the lobby to play again.</p>' : '';
   if (youWon) { sfx.fanfare(); confetti(player.pos); }
-  extra = roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
+  // trophies for the top three (in the Obstacle Course you have to finish)
+  const placeOf = e => won(e) ? 0 : order.indexOf(e);
+  const eligible = e => SP.game !== 'race' || e.finished;
+  let tro = '';
+  if (meE && eligible(meE)) tro = giveTrophies(TROPHY_FOR[placeOf(meE)] || 0);
+  if (!SP.online) { save.botTrophies = save.botTrophies || {}; for (const e of order) if (e.bot && eligible(e)) { const n = TROPHY_FOR[placeOf(e)] || 0; if (n) save.botTrophies[e.name] = (save.botTrophies[e.name] | 0) + n; } persist(); drawTrophyBoard(); }
+  if (!tro) { const goal = nextTrophyGoal(); if (goal) tro = '<p style="color:#8a84b8;font-weight:600;margin:4px 0">Finish in the top 3 to earn trophies. Next unlock: ' + goal + '</p>'; }
+  extra = tro + roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
   $('resTitle').textContent = youWon ? 'You win!' : (SP.game === 'race' ? (meE && meE.finished ? 'You finished!' : 'Round over') : (SP.placings.find(e => e.me) ? 'Good try!' : 'Round over'));
   $('resTable').innerHTML = rows; $('resExtra').innerHTML = extra;
   $('results').classList.remove('hidden');
@@ -1613,7 +1914,7 @@ function leaveSpinner() {
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.4.1'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.5'; requestLock();
 }
 $('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
@@ -1834,6 +2135,7 @@ function netSendPresence(force) {
     o: NET.outAt,
     b: myBest(),
     rd: NET.ready | 0,
+    tr: save.trophies | 0,
     tt: SP.online && SP.game === 'spleef' && mode !== 'lobby' && NET.touched && NET.touched.length ? NET.touched.slice(-40) : null,
     f: SP.online && SP.game === 'race' && mode !== 'lobby' ? NET.finT : null,
     g: SP.online && SP.isHost ? hostState() : null,
@@ -2023,16 +2325,22 @@ function showOnlineResults(res) {
   const pts = [10, 7, 5, 3, 2, 1];
   let youWon = false, rows = '';
   const meE = SP.entities.find(e => e.me);
+  let myTro = 0;
   res.slice(0, 6).forEach((row, k) => {
     if (!Array.isArray(row)) return;
     const [nm, label, won, ft] = row, mine = label === NET.myLabel;
     if (mine && won) youWon = true;
+    const tn = (SP.game !== 'race' || typeof ft === 'number') ? (TROPHY_FOR[won ? 0 : k] || 0) : 0;
+    if (mine) myTro = tn;
+    row.tn = tn;
     const tm = SP.game === 'race' ? (typeof ft === 'number' ? ' · ' + ft.toFixed(1) + ' s' : ' · not finished') : '';
-    rows += `<tr class="${mine ? 'me' : ''}"><td>${won ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(cleanName(nm))}${mine ? ' (you)' : ''}${tm}</td><td>+${pts[k] || 0}</td></tr>`;
+    rows += `<tr class="${mine ? 'me' : ''}"><td>${won ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(cleanName(nm))}${mine ? ' (you)' : ''}${tm}</td><td>${tn ? '🏆' + tn : ''}</td></tr>`;
   });
   let extra = '<p style="color:#6a62a8;font-weight:600">Step on a pad in the lobby to play again.</p>';
   if (youWon) { sfx.fanfare(); confetti(player.pos); }
-  extra = roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
+  let tro = giveTrophies(myTro);
+  if (!tro) { const goal = nextTrophyGoal(); if (goal) tro = '<p style="color:#8a84b8;font-weight:600;margin:4px 0">Finish in the top 3 to earn trophies. Next unlock: ' + goal + '</p>'; }
+  extra = tro + roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
   $('resTitle').textContent = youWon ? 'You win!' : (SP.game === 'race' && meE && meE.finished ? 'You finished!' : 'Round over');
   $('resTable').innerHTML = rows; $('resExtra').innerHTML = extra; $('resAgain').style.display = 'none';
   $('results').classList.remove('hidden');
@@ -2073,26 +2381,53 @@ $('onJoin').onclick = () => netJoin($('onCode').value);
 $('onLeave').onclick = () => netLeave(false);
 $('onClose').onclick = closeOnline;
 
-/* ---------- comet trail (Spinner reward) ---------- */
+/* ---------- trails (bubbles, comet, hearts, stars) ---------- */
+function emojiTexture(ch) { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.font = '52px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, 32, 36); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+const trailTex = { hearts: emojiTexture('💖'), stars: emojiTexture('⭐') };
 const trailBits = [];
-for (let i = 0; i < 26; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffe27a', transparent: true, opacity: 0, depthWrite: false })); m.visible = false; scene.add(m); trailBits.push({ m, life: 0 }); }
+for (let i = 0; i < 30; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffe27a', transparent: true, opacity: 0, depthWrite: false })); m.visible = false; scene.add(m);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: trailTex.hearts, transparent: true, depthWrite: false })); sp.visible = false; scene.add(sp);
+  trailBits.push({ m, sp, life: 0, kind: 'comet' });
+}
 let trailIdx = 0, trailT = 0;
 function updateTrail(dt) {
-  const on = save.trail === 'comet', sp = Math.hypot(player.vel.x, player.vel.z) + Math.abs(player.vel.y) * 0.5;
+  const kind = save.trail || 'none', on = kind !== 'none' && TRAILS.some(x => x.id === kind && !lockOf(x).locked);
+  const sp = Math.hypot(player.vel.x, player.vel.z) + Math.abs(player.vel.y) * 0.5;
   trailT -= dt;
   if (on && sp > 1 && trailT <= 0) {
-    trailT = 0.03;
+    trailT = kind === 'comet' ? 0.03 : kind === 'bubbles' ? 0.07 : 0.09;
     const b = trailBits[trailIdx++ % trailBits.length];
-    b.m.position.set(player.pos.x + (Math.random() - 0.5) * 0.3, player.pos.y + 0.6 + Math.random() * 0.5, player.pos.z + (Math.random() - 0.5) * 0.3);
-    b.life = 0.6; b.m.visible = true; b.m.material.color.setHSL((performance.now() / 1000 * 0.3 + Math.random() * 0.1) % 1, 0.95, 0.55);
+    b.kind = kind; b.life = kind === 'comet' ? 0.6 : 1.0; b.max = b.life;
+    const x = player.pos.x + (Math.random() - 0.5) * 0.4, y = player.pos.y + 0.5 + Math.random() * 0.7, z = player.pos.z + (Math.random() - 0.5) * 0.4;
+    b.m.visible = b.sp.visible = false;
+    if (kind === 'comet' || kind === 'bubbles') {
+      b.m.position.set(x, y, z); b.m.visible = true;
+      if (kind === 'comet') b.m.material.color.setHSL((performance.now() / 1000 * 0.3 + Math.random() * 0.1) % 1, 0.95, 0.55);
+      else b.m.material.color.set('#bfeaff');
+    } else { b.sp.position.set(x, y, z); b.sp.material.map = trailTex[kind]; b.sp.material.needsUpdate = true; b.sp.visible = true; b.spin = (Math.random() - 0.5) * 3; }
   }
-  for (const b of trailBits) if (b.life > 0) { b.life -= dt; b.m.material.opacity = Math.max(0, b.life / 0.6); b.m.scale.setScalar(0.4 + b.life * 1.5); b.m.position.y += dt * 0.6; if (b.life <= 0) b.m.visible = false; }
+  for (const b of trailBits) if (b.life > 0) {
+    b.life -= dt; const k = Math.max(0, b.life / b.max);
+    if (b.kind === 'comet') { b.m.material.opacity = k; b.m.scale.setScalar(0.4 + b.life * 1.5); b.m.position.y += dt * 0.6; }
+    else if (b.kind === 'bubbles') { b.m.material.opacity = 0.45 * k + 0.1; b.m.scale.setScalar(0.6 + (1 - k) * 0.9); b.m.position.y += dt * 1.1; b.m.position.x += Math.sin(b.life * 9) * dt * 0.4; }
+    else { b.sp.material.opacity = k; b.sp.scale.setScalar(0.35 + (1 - k) * 0.25); b.sp.position.y += dt * 0.9; b.sp.material.rotation += b.spin * dt; }
+    if (b.life <= 0) { b.m.visible = false; b.sp.visible = false; }
+  }
 }
 
 /* ---------- animation of the wobbly body ---------- */
+function animExtras(h, t) {
+  h.backSlot.traverse(o => {
+    if (o.name === 'bwing') o.rotation.y = -o.userData.sx * (0.35 + Math.sin(t * 7) * 0.35);
+    if (o.name === 'cape') o.rotation.x = 0.15 + Math.sin(t * 3) * 0.06 + Math.min(0.7, Math.hypot(h.vx || 0, h.vz || 0) * 0.08);
+    if (o.name === 'flick') o.scale.y = 0.7 + Math.random() * 0.6;
+  });
+  h.outfitSlot.traverse(o => { if (o.name === 'orbit') { const a = t * (1.5 + o.userData.k) + o.userData.k * 3; o.position.set(Math.cos(a) * 0.75, 1.1 + Math.sin(a * 1.3) * 0.25, Math.sin(a) * 0.75); } });
+}
 function animateHero(dt, t) { animateChar(hero, player, dt, t); }
 function animateChar(h, p, dt, t) {
-  h.root.position.copy(p.pos);
+  h.root.position.copy(p.pos); h.vx = p.vel.x; h.vz = p.vel.z;
   h.root.rotation.y = p.facing;
   const sp = Math.hypot(p.vel.x, p.vel.z);
   p.anim += dt * (4 + sp * 1.6);
@@ -2119,6 +2454,7 @@ function animateChar(h, p, dt, t) {
   else if (!p.grounded) { h.armL.rotation.x = h.armR.rotation.x = lerp(h.armL.rotation.x, -2.2 + Math.sin(t * 20) * 0.3, 0.3); h.legL.rotation.x = 0.4; h.legR.rotation.x = -0.2; }
   else { h.armL.rotation.x = -swing * 1.1; h.armR.rotation.x = swing * 1.1; }
   h.armL.rotation.z = -0.35 - (p.grounded ? 0 : 0.5); h.armR.rotation.z = 0.35 + (p.grounded ? 0 : 0.5);
+  animExtras(h, t);
   h.outfitSlot.traverse(o => { if (o.name === 'wing') o.rotation.y = Math.sign(o.position.x) * (0.5 + Math.sin(t * 60) * 0.35); if (o.name === 'flick') o.scale.y = 0.8 + Math.random() * 0.5; });
   if (h.rainbow && h.bodyMat.map) h.bodyMat.map.offset.x = (t * 0.12) % 1;
   const blade = h.hatSlot.getObjectByName('blade'); if (blade) blade.rotation.y += dt * (p.grounded ? 6 : 30);
@@ -2171,6 +2507,8 @@ function frame() {
     $('lobbyBtn').style.display = player.pos.x < -19.5 ? 'block' : 'none';
   }
   animateHero(dt, t);
+  if (window.__trophyStar) window.__trophyStar.rotation.y = t * 1.5;
+  if (panelOpen && !$('skins').classList.contains('hidden')) renderPreview(dt, t);
   updateTrail(dt);
   netUpdate(dt, t);
   updateOnlineBtn();
@@ -2210,7 +2548,7 @@ requestAnimationFrame(frame);
 window.__moverZ = () => movers[0].m.position.z;
 window.__sim = (n, dt, keysFn) => { for (let i = 0; i < n; i++) { if (keysFn) keysFn(i * dt); updateCourse(dt); physics(dt / 2, true); physics(dt / 2, false); } return { x: player.pos.x, y: player.pos.y, z: player.pos.z, g: player.grounded, d: player.diving }; };
 window.__press = (code) => { const P = player; if (code === 'Space') { if (!P.grounded && P.coyote <= 0 && !P.diving && P.airJumped && !nearGround()) startDive(); else P.buffer = CONFIG.jumpBuffer; } };
-window.__wr = { startRound, hexTiles, raceDoors, RC, SPL, progressCode, loadProgress, get game() { return SP.game; }, tickRound(n, dt, fn) { for (let i = 0; i < n; i++) { if (fn) fn(i * dt); updateRound(dt); } return { mode, elapsed: +SP.elapsed.toFixed(1), alive: SP.entities.filter(e => e.alive).map(e => e.name), fin: (SP.finOrder || []).map(e => e.name + ':' + e.finT.toFixed(1)) }; }, NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
+window.__wr = { PV, rebuildLocker() { buildSkinsPanel(); }, giveTrophies, drawTrophyBoard, startRound, hexTiles, raceDoors, RC, SPL, progressCode, loadProgress, get game() { return SP.game; }, tickRound(n, dt, fn) { for (let i = 0; i < n; i++) { if (fn) fn(i * dt); updateRound(dt); } return { mode, elapsed: +SP.elapsed.toFixed(1), alive: SP.entities.filter(e => e.alive).map(e => e.name), fin: (SP.finOrder || []).map(e => e.name + ':' + e.finT.toFixed(1)) }; }, NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
 </script>
 </body>
 </html>
