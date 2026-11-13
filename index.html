@@ -72,7 +72,7 @@
 </style>
 </head>
 <body>
-<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.5</div></div>
+<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.5.1</div></div>
 <div id="timer"></div>
 <div id="big"></div>
 <div id="prompt"></div>
@@ -149,9 +149,10 @@
       <div id="lkSettings" style="display:none">
         <div class="row"><b>Your name (for the leaderboards)</b><input id="nameIn" maxlength="14" style="font:700 1.05rem 'Baloo 2',sans-serif;border:3px solid #e4e0fa;border-radius:12px;padding:6px 12px;width:240px;color:#2a2350"></div>
         <div class="row" style="border-top:2px solid #f0edfb;padding-top:10px"><b>Move your progress</b>
-          <div style="color:#8a84b8;font-weight:600;font-size:.92rem;margin-bottom:6px">The Claude version and the website each keep their own times, trophies, skins and quests. Copy your code from one, then paste it into the other and press Load.</div>
-          <textarea id="progCode" rows="3" spellcheck="false" style="width:100%;font:600 .8rem monospace;border:3px solid #e4e0fa;border-radius:12px;padding:6px 10px;color:#2a2350;resize:vertical" placeholder="Your progress code appears here, or paste one in"></textarea>
-          <div class="opts" style="margin-top:6px"><button class="opt" id="progShow">Show my code</button><button class="opt" id="progCopy">Copy</button><button class="opt" id="progLoad">Load pasted code</button></div>
+          <div style="color:#8a84b8;font-weight:600;font-size:.92rem;margin-bottom:8px">The Claude version and the website keep separate progress. Your 6-digit code carries your <strong>trophies, quests and treasure</strong>, so you can move them across. Type the code on the other one and press Load.</div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">Your code: <span id="progMine" style="font:800 2rem 'Baloo 2',sans-serif;letter-spacing:.15em;color:#5b4bc4;background:#f0edfb;border-radius:12px;padding:2px 14px"></span><button class="opt" id="progCopy">Copy</button></div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><input id="progCode" inputmode="numeric" maxlength="6" placeholder="000000" style="font:800 1.5rem 'Baloo 2',sans-serif;letter-spacing:.15em;border:3px solid #e4e0fa;border-radius:12px;padding:4px 12px;width:170px;color:#2a2350"><button class="opt" id="progLoad">Load this code</button></div>
+          <div style="color:#8a84b8;font-weight:600;font-size:.82rem;margin-top:6px">Your skin choices and parkour times stay on each computer.</div>
         </div>
       </div>
       <div style="text-align:right;margin-top:12px"><button class="btn" id="skinsDone">Done</button></div>
@@ -1168,6 +1169,7 @@ function lkTile(grid, { icon, swatch, name, sel, lock, onPick }) {
 function buildSkinsPanel() {
   const tabs = $('lkTabs'); tabs.innerHTML = '';
   for (const [id, label] of LK_TABS) { const t = document.createElement('button'); t.className = 'tab' + (lkTab === id ? ' sel' : ''); t.textContent = label; t.onclick = () => { lkTab = id; buildSkinsPanel(); sfx.click(); }; tabs.appendChild(t); }
+  $('progMine').textContent = progressCode();
   $('lkTrophies').textContent = '🏆 ' + (save.trophies | 0) + ' troph' + ((save.trophies | 0) === 1 ? 'y' : 'ies');
   const grid = $('lkGrid'); grid.innerHTML = '';
   const settings = lkTab === 'settings';
@@ -1224,35 +1226,28 @@ function openSkins() { if (mode !== 'lobby') return; $('nameIn').value = save.na
 function closeSkins() { const nm = $('nameIn').value.trim(); if (nm) { save.name = nm; persist(); } panelOpen = false; $('skins').classList.add('hidden'); for (const k in keys) keys[k] = false; requestLock(); }
 $('skinsDone').onclick = closeSkins;
 // progress codes: carry times, skins and quests between the Claude version and the website
+// 6-digit progress code: trophies (up to 4095), the 6 quests and the treasure chest, scrambled so random numbers don't work
+const PC = { M: 524288, A: 214013, AI: 209237, B: 137771 };
 function progressCode() {
-  const keep = { trophies: save.trophies | 0, botTrophies: save.botTrophies || {}, name: save.name, colour: save.colour, pattern: save.pattern, hat: save.hat, outfit: save.outfit, back: save.back, trail: save.trail, done: save.done, chest: !!save.chest, runs2: save.runs2 || [], best: save.best, course: save.course };
-  return 'WG1-' + btoa(unescape(encodeURIComponent(JSON.stringify(keep))));
+  let bits = 0; for (let i = 0; i < 6; i++) if (save.done[i]) bits |= 1 << i;
+  const n = (Math.min(4095, save.trophies | 0) << 7) | (bits << 1) | (save.chest ? 1 : 0);
+  return String((n * PC.A + PC.B) % PC.M).padStart(6, '0');
 }
 function loadProgress(code) {
-  let d;
-  try { d = JSON.parse(decodeURIComponent(escape(atob(String(code).trim().replace(/^WG1-/, '').replace(/\s+/g, ''))))); } catch (e) { toast("That code didn't work.<br>Copy the whole code and try again.", 3000); return; }
-  if (!d || typeof d !== 'object') { toast("That code didn't work.", 2500); return; }
-  const num = (v, a, b) => typeof v === 'number' && isFinite(v) && v >= a && v <= b;
-  if (Array.isArray(d.done)) for (let i = 0; i < save.done.length; i++) if (d.done[i] === true) save.done[i] = true;
-  if (d.chest === true) save.chest = true;
-  if (num(d.trophies, 0, 100000)) save.trophies = Math.max(save.trophies | 0, d.trophies | 0);
-  if (d.botTrophies && typeof d.botTrophies === 'object') { save.botTrophies = save.botTrophies || {}; for (const [nm] of BOTS) if (num(d.botTrophies[nm], 0, 100000)) save.botTrophies[nm] = Math.max(save.botTrophies[nm] | 0, d.botTrophies[nm] | 0); }
-  const runs = Array.isArray(d.runs2) ? d.runs2.filter(r => r && typeof r.name === 'string' && num(r.t, 3, 3600)).map(r => ({ name: r.name.slice(0, 20), t: r.t })) : [];
-  save.runs2 = bestPerPlayer((save.runs2 || []).concat(runs));
-  if (num(d.best, 3, 3600) && d.course === 2) { if (save.course !== 2) { save.course = 2; save.best = null; } save.best = save.best === null || save.best === undefined ? d.best : Math.min(save.best, d.best); }
-  if (typeof d.name === 'string' && d.name.trim() && (!save.name || save.name === 'Player')) save.name = d.name.slice(0, 14);
-  if (num(d.colour, 0, COLOURS.length - 1)) save.colour = d.colour | 0;
-  if (num(d.pattern, 0, PATTERNS.length - 1)) save.pattern = d.pattern | 0;
-  if (HATS.some(h => h.id === d.hat)) save.hat = d.hat;
-  if (OUTFITS.some(o => o.id === d.outfit)) save.outfit = d.outfit;
-  if (BACKS.some(b => b.id === d.back)) save.back = d.back;
-  if (TRAILS.some(t => t.id === d.trail)) save.trail = d.trail;
-  persist(); grantEarnedRewards(); applySkin(); drawQuestBoard(); drawLeaderboard(); drawTrophyBoard(); buildSkinsPanel(); $('nameIn').value = save.name || 'Player';
+  const c = String(code).replace(/\D/g, '');
+  if (c.length !== 6 || +c >= PC.M) { toast("That code didn't work.<br>Codes are 6 numbers, like 204817.", 3000); sfx.bonk(); return; }
+  const n = (((+c - PC.B) * PC.AI) % PC.M + PC.M) % PC.M;
+  const tro = n >> 7, bits = (n >> 1) & 63, chest = n & 1;
+  if (c === progressCode()) { toast('That is already your code!', 2000); return; }
+  if (tro > Math.max(500, (save.trophies | 0) + 500) && bits === 0) { toast("That code didn't work.<br>Check the numbers and try again.", 3000); sfx.bonk(); return; }
+  for (let i = 0; i < 6; i++) if (bits & (1 << i)) save.done[i] = true;
+  if (chest) save.chest = true;
+  save.trophies = Math.max(save.trophies | 0, tro);
+  persist(); grantEarnedRewards(); applySkin(); drawQuestBoard(); drawLeaderboard(); drawTrophyBoard(); buildSkinsPanel();
   if (NET.room) netSendPresence(true);
-  sfx.fanfare(); toast('Progress loaded!<br>Your times, skins and quests are here now.', 3500);
+  sfx.fanfare(); toast('Progress loaded!<br>🏆 ' + save.trophies + ' trophies, quests and treasure are here now.', 3500);
 }
-$('progShow').onclick = () => { $('progCode').value = progressCode(); $('progCode').select(); };
-$('progCopy').onclick = async () => { const ta = $('progCode'); if (!ta.value.startsWith('WG1-')) ta.value = progressCode(); ta.select(); let ok = false; try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (x) {} } toast(ok ? 'Code copied!' : 'Press Ctrl+C to copy the selected code.', 2000); };
+$('progCopy').onclick = async () => { const code = progressCode(); let ok = false; try { await navigator.clipboard.writeText(code); ok = true; } catch (e) {} toast(ok ? 'Code ' + code + ' copied!' : 'Your code is ' + code + '. Write it down!', 2500); };
 $('progLoad').onclick = () => loadProgress($('progCode').value);
 
 let nearThing = null;
@@ -1293,7 +1288,7 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && !typing) e.preventDefault();
   if (!started) return;
   if (onlineOpen) { if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter') netJoin($('onCode').value); return; } if (e.code === 'Escape' || e.code === 'KeyO') closeOnline(); return; }
-  if (panelOpen) { if (typing) { if (e.code === 'Enter' && e.target.tagName === 'INPUT') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE' || e.code === 'KeyL') closeSkins(); return; }
+  if (panelOpen) { if (typing) { if (e.code === 'Enter' && e.target.id === 'progCode') loadProgress(e.target.value); else if (e.code === 'Enter' && e.target.tagName === 'INPUT') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE' || e.code === 'KeyL') closeSkins(); return; }
   keys[e.code] = true;
   if (e.repeat) return;
   audio();
@@ -1914,7 +1909,7 @@ function leaveSpinner() {
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.5'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.5.1'; requestLock();
 }
 $('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
