@@ -241,7 +241,7 @@ function signBoard(x, y, z, rotY, w, h, tex, post = true) {
 
 /* ---------- the world: lobby (from Ian's drawing) ---------- */
 // water far below
-const water = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: '#5cc8f2', roughness: 0.3 }));
+const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: '#5cc8f2', roughness: 0.3 }));
 water.rotation.x = -Math.PI / 2; water.position.y = -14; scene.add(water);
 // clouds
 for (let i = 0; i < 18; i++) {
@@ -757,7 +757,7 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
   if (me && mode === 'lobby') sweeperHit(p);
   if (p.knockT > 0) p.knockT -= dt;
   if (mode !== 'lobby' && SP.game === 'spin') spinnerBarHit(p);
-  if (mode !== 'lobby' && SP.game === 'race') raceLogHit(p);
+  if (mode !== 'lobby' && SP.game === 'race') { raceLogHit(p); if (p.grounded && p.ground && p.ground.tag === 'vtile') vtileStep(p.ground); }
   if (mode !== 'lobby' && SP.game === 'spleef' && p.grounded && p.ground && p.ground.tag === 'hex') spleefStep(p.ground, me);
   if (me && p.grounded && p.ground && p.ground.tag === 'vanish') { const v = vanish.find(v => v.s === p.ground); if (v && v.t < 0 && !v.s.off) v.t = 0; }
   if (p.grounded && p.diving) { p.diving = false; p.recover = CONFIG.diveRecover; p.squash = 0.8; }
@@ -1052,7 +1052,8 @@ const SPL = { x: 0, z: 200, size: 2.2, R: 13.4, layers: [0, -5, -10], out: -13, 
 SPL.rowH = SPL.size * Math.sqrt(3) / 2;
 const hexTiles = [], hexMap = new Map();
 const hexGeo = new THREE.CylinderGeometry(SPL.size / Math.sqrt(3) * 0.96, SPL.size / Math.sqrt(3) * 0.96, 0.5, 6);
-const LAYER_COLS = [['#ff8fc6', '#ffb8dc'], ['#5cc0ff', '#9adcff'], ['#ffd23f', '#ffe68a']];
+const LAYER_COLS = [['#ff8fc6', '#ffb8dc'], ['#5cc0ff', '#9adcff'], ['#7bd96a', '#a8ea98']];
+const WARN_A = new THREE.Color('#ffe014'), WARN_B = new THREE.Color('#ff2a2a');
 SPL.layers.forEach((top, L) => {
   for (let r = -9; r <= 9; r++) for (let c = -9; c <= 9; c++) {
     const x = c * SPL.size + (r & 1 ? SPL.size / 2 : 0), z = r * SPL.rowH;
@@ -1064,7 +1065,7 @@ SPL.layers.forEach((top, L) => {
     const t = { m, s, L, r, c, bx: m.position.x, by: m.position.y, bz: m.position.z, state: 'up', t: 0, vy: 0, col, idx: hexTiles.length, d: Math.hypot(x, z) };
     s.hex = t; hexTiles.push(t); hexMap.set(L + ',' + r + ',' + c, t);
   }
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(SPL.R + 1.2, 0.22, 10, 80), mat(['#ff5fa2', '#3fb8ff', '#ffb020'][L])); ring.rotation.x = Math.PI / 2; ring.position.set(SPL.x, top - 0.6, SPL.z); scene.add(ring);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(SPL.R + 1.2, 0.22, 10, 80), mat(['#ff5fa2', '#3fb8ff', '#3fae5c'][L])); ring.rotation.x = Math.PI / 2; ring.position.set(SPL.x, top - 0.6, SPL.z); scene.add(ring);
 });
 for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; cyl(SPL.x + Math.cos(a) * (SPL.R + 1.2), -6, SPL.z + Math.sin(a) * (SPL.R + 1.2), 0.3, 12, '#5b4bc4'); }
 signBoard(SPL.x, 6.5, SPL.z - SPL.R - 3, 0, 6, 1.4, textSign([['SPLEEF', 96, '#3fb8ff']], 512, 128), false);
@@ -1074,7 +1075,7 @@ function hexAt(L, x, z) {
 }
 function layerOf(y) { return y > -2.5 ? 0 : y > -7.5 ? 1 : 2; }
 function resetSpleef() {
-  for (const t of hexTiles) { t.state = 'up'; t.t = 0; t.vy = 0; t.s.off = false; t.m.visible = true; t.m.position.set(t.bx, t.by, t.bz); t.m.material.color.set(t.col); }
+  for (const t of hexTiles) { t.state = 'up'; t.t = 0; t.vy = 0; t.s.off = false; t.m.visible = true; t.m.position.set(t.bx, t.by, t.bz); t.m.rotation.set(0, 0, 0); t.m.material.color.set(t.col); }
   NET.touched = [];
 }
 // a tile you stand on shakes for a moment, then drops
@@ -1086,8 +1087,8 @@ function spleefStep(s, me) {
 function animateHex(dt) {
   for (const t of hexTiles) {
     if (t.state === 'shake') {
-      t.t += dt; t.m.position.x = t.bx + Math.sin(t.t * 55) * 0.05; t.m.position.y = t.by - t.t * 0.15;
-      t.m.material.color.set(Math.floor(t.t * 10) % 2 ? '#ffffff' : t.col);
+      t.t += dt; const wob = t.t > SPL.shake * 0.55 ? 0.06 : 0.015; t.m.position.x = t.bx + Math.sin(t.t * 55) * wob; t.m.position.y = t.by - t.t * 0.12;
+      t.m.material.color.copy(WARN_A).lerp(WARN_B, Math.min(1, t.t / SPL.shake));   // yellow, then orange, then red
       if (t.t > SPL.shake) { t.state = 'fall'; t.s.off = true; t.vy = 0; t.m.position.x = t.bx; }
     } else if (t.state === 'fall') {
       t.vy -= 25 * dt; t.m.position.y += t.vy * dt; t.m.rotation.x += dt * 2;
@@ -1148,10 +1149,9 @@ function spleefBot(b, dt) {
 
 /* ---------- OBSTACLE COURSE (v0.4): spinning logs, a wall of doors (some are fake!), pushers, stepping stones ---------- */
 buildZone = 'race';
-const RC = { cps: [-183, -206, -226, -248], finishZ: -270, out: -6, rows: [-211, -220] };
+const RC = { cps: [-183, -206, -226, -248, -268, -292, -314], finishZ: -340, top: 4, out: -6, rows: [-211, -220] };
 box(0, -0.5, -182, 12, 1, 8, '#fff3c4');                    // start pad
 box(0, -0.5, -217, 12, 1, 62, '#cfe9ff');                   // logs, doors, pushers
-box(0, -0.5, -274, 12, 1, 16, '#fff3c4');                   // finish platform
 box(0, -3, -217, 11.4, 4, 61.4, '#c99a6b', false);
 for (const [z0, z1, c] of [[-186, -206, '#ffd6ea'], [-206, -226, '#d9f5c9'], [-226, -248, '#ffe9b0']]) {
   const st = new THREE.Mesh(new THREE.PlaneGeometry(11.6, z0 - z1), mat(c)); st.rotation.x = -Math.PI / 2; st.position.set(0, 0.012, (z0 + z1) / 2); st.receiveShadow = true; scene.add(st);
@@ -1160,7 +1160,7 @@ for (const z of RC.cps.slice(1)) { const l = new THREE.Mesh(new THREE.PlaneGeome
 const raceGate = box(0, 1.5, -186.3, 12, 3, 0.3, new THREE.MeshStandardMaterial({ color: '#ff5f5f', transparent: true, opacity: 0.55 }), true, { tag: 'gate' });
 const raceGateS = solids[solids.length - 1];
 // spinning logs
-const raceLogs = [{ z: -192, dir: 1, speed: 1.5, ph: 0 }, { z: -201, dir: -1, speed: 1.8, ph: 1.2 }];
+const raceLogs = [{ z: -192, dir: 1, speed: 1.9, ph: 0 }, { z: -201, dir: -1, speed: 2.3, ph: 1.2 }];
 for (const lg of raceLogs) {
   cyl(0, 0.6, lg.z, 0.5, 1.2, '#5b4bc4', true, 20);
   lg.g = new THREE.Group(); lg.g.position.set(0, 0, lg.z); scene.add(lg.g);
@@ -1182,22 +1182,51 @@ RC.rows.forEach((z, row) => {
   box(0, 3.3, z, 12.4, 0.6, 0.6, '#5b4bc4', false); box(-6.1, 1.5, z, 0.2, 3, 0.6, '#5b4bc4', false); box(6.1, 1.5, z, 0.2, 3, 0.6, '#5b4bc4', false);
 });
 // pushers slide across the track
-const racePushers = [{ z: -231, sp: 1.3, ph: 0 }, { z: -237, sp: 1.7, ph: 2 }, { z: -243, sp: 1.5, ph: 4 }];
+const racePushers = [{ z: -231, sp: 1.6, ph: 0 }, { z: -236, sp: 2.0, ph: 2 }, { z: -240.5, sp: 1.8, ph: 4 }, { z: -245, sp: 2.2, ph: 1 }];
 for (const pu of racePushers) {
+  pu.amp = 4.25; pu.y = 0;
   pu.m = box(0, 0.8, pu.z, 3.5, 1.6, 1.0, '#ff5f5f', true, { tag: 'pusher' }); pu.s = solids[solids.length - 1];
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.52, 0.3, 1.02), mat('#ffffff')); stripe.position.y = 0.3; pu.m.add(stripe);
 }
 // stepping stones over the water (two of them drift sideways)
 const raceStones = [-250.5, -254, -257.5, -261, -264.5].map((z, i) => {
   const x = i % 2 ? 2.5 : -2.5;
-  const m = box(x, -0.5, z, 3.4, 1, 2.8, i % 2 ? '#8ee05a' : '#5fe0c0'); const s = solids[solids.length - 1];
-  return { m, s, bx: x, z, moves: i === 1 || i === 3, ph: i };
+  const m = box(x, -0.5, z, 3.0, 1, 2.5, i % 2 ? '#8ee05a' : '#5fe0c0'); const s = solids[solids.length - 1];
+  return { m, s, bx: x, z, moves: i >= 1 && i <= 3, ph: i * 1.7 };
 });
 // finish arch
-box(-6.2, 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true); box(6.2, 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true);
-box(0, 5.2, RC.finishZ, 13, 0.8, 0.8, '#ff5fa2', false);
-signBoard(0, 6.6, RC.finishZ + 0.5, 0, 5, 1.2, textSign([['FINISH', 90, '#ff5fa2']], 512, 128), false);
-{ const fl = new THREE.Mesh(new THREE.PlaneGeometry(12, 1), new THREE.MeshStandardMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 16; const g = c.getContext('2d'); for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#2a2350' : '#ffffff'; g.fillRect(i * 8, j * 8, 8, 8); } const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; return t; })() })); fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0.02, RC.finishZ); scene.add(fl); }
+// --- v0.4.1: the course goes on! landing platform, hammer beam, vanishing tiles, staircase up to the finish
+box(0, -0.5, -270, 12, 1, 8, '#fff3c4');                    // platform A (checkpoint 4)
+box(0, -0.5, -282, 1.8, 1, 16, '#c7a0ff');                  // the narrow beam
+box(0, -0.5, -293, 10, 1, 6, '#fff3c4');                    // platform B (checkpoint 5)
+const raceVT = [];
+for (let r = 0; r < 7; r++) for (let c = 0; c < 3; c++) {
+  const col = (r + c) % 2 ? '#ff9ad0' : '#9ad8ff';
+  const m = box(-2.5 + c * 2.5, -0.35, -297.4 - r * 2.2, 2.0, 0.7, 1.8, col, true, { tag: 'vtile' }); const s = solids[solids.length - 1];
+  const v = { m, s, col, state: 'up', t: 0 }; s.vt = v; raceVT.push(v);
+}
+box(0, -0.5, -315, 10, 1, 6, '#fff3c4');                    // platform C (checkpoint 6)
+for (let k = 0; k < 5; k++) box(0, 0.4 * (k + 1) - 0.5, -319.25 - k * 2.5, 9, 0.8 * (k + 1) + 1, 2.5, k % 2 ? '#ffd6ea' : '#d9f5c9');   // stairs up
+box(0, RC.top - 1, -339.75, 12, 2, 18.5, '#fff3c4');      // finish platform, high up
+for (const h of [{ z: -277, sp: 2.0, ph: 0 }, { z: -281.5, sp: 2.4, ph: 1.6 }, { z: -286, sp: 2.2, ph: 3.1 }]) {   // swinging hammers over the beam
+  h.amp = 3.2; h.y = 0;
+  h.m = box(0, 0.8, h.z, 1.4, 1.6, 1.2, '#ff7a2a', true, { tag: 'pusher' }); h.s = solids[solids.length - 1];
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 6), mat('#2a2350')); rope.position.y = 2.4; h.m.add(rope);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.25, 1.22), mat('#ffffff')); band.position.y = 0.35; h.m.add(band);
+  racePushers.push(h);
+}
+box(0, 4.6, -281.5, 0.4, 0.4, 13, '#5b4bc4', false); box(-4, 2.3, -275, 0.4, 4.6, 0.4, '#5b4bc4', false); box(4, 2.3, -288, 0.4, 4.6, 0.4, '#5b4bc4', false);
+for (const st of [{ z: -324.2, sp: 1.7, ph: 0.5, y: 2.4 }, { z: -329.2, sp: 2.1, ph: 2.5, y: 4.0 }]) {      // pushers on the stairs
+  st.amp = 2.8;
+  st.m = box(0, st.y + 0.8, st.z, 2.6, 1.6, 0.9, '#ff5f5f', true, { tag: 'pusher' }); st.s = solids[solids.length - 1];
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.3, 0.92), mat('#ffffff')); stripe.position.y = 0.3; st.m.add(stripe);
+  racePushers.push(st);
+}
+for (const z of [-268, -292, -314]) { const l = new THREE.Mesh(new THREE.PlaneGeometry(10, 0.5), mat('#3fb8ff')); l.rotation.x = -Math.PI / 2; l.position.set(0, 0.02, z); scene.add(l); flag(-5.3, 0, z, '#3fb8ff'); }
+box(-6.2, RC.top + 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true); box(6.2, RC.top + 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true);
+box(0, RC.top + 5.2, RC.finishZ, 13, 0.8, 0.8, '#ff5fa2', false);
+signBoard(0, RC.top + 6.6, RC.finishZ + 0.5, 0, 5, 1.2, textSign([['FINISH', 90, '#ff5fa2']], 512, 128), false);
+{ const fl = new THREE.Mesh(new THREE.PlaneGeometry(12, 1), new THREE.MeshStandardMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 16; const g = c.getContext('2d'); for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#2a2350' : '#ffffff'; g.fillRect(i * 8, j * 8, 8, 8); } const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; return t; })() })); fl.rotation.x = -Math.PI / 2; fl.position.set(0, RC.top + 0.02, RC.finishZ); scene.add(fl); }
 signBoard(0, 6.5, -177, Math.PI, 7, 1.4, textSign([['OBSTACLE COURSE', 70, '#ffb020']], 512, 128), false);
 buildZone = 'lobby';
 
@@ -1205,12 +1234,14 @@ function seededRand(str) { let h = 2166136261; for (let i = 0; i < str.length; i
 function resetRace(seed) {
   const rnd = seededRand(String(seed || 'x'));
   RC.real = [[], []];
-  for (const row of [0, 1]) { const ks = [0, 1, 2, 3, 4]; for (let i = 4; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ks[i], ks[j]] = [ks[j], ks[i]]; } RC.real[row] = ks.slice(0, 2); }
+  for (const row of [0, 1]) { const ks = [0, 1, 2, 3, 4]; for (let i = 4; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ks[i], ks[j]] = [ks[j], ks[i]]; } RC.real[row] = ks.slice(0, row === 0 ? 2 : 1); }   // only one real door in the second row
   for (const d of raceDoors) { d.broken = false; d.t = 0; d.s.off = false; d.s.real = RC.real[d.row].includes(d.k); d.m.visible = true; d.m.position.set(d.x, 1.5, d.z); d.m.rotation.set(0, 0, 0); }
   raceGateS.off = false; raceGate.visible = true;
+  for (const v of raceVT) { v.state = 'up'; v.t = 0; v.s.off = false; v.m.visible = true; v.m.material.color.set(v.col); }
   raceObstacles(0, 0);
   NET.finT = null;
 }
+function vtileStep(s) { const v = s.vt; if (v && v.state === 'up' && mode === 'play') { v.state = 'shake'; v.t = 0; } }
 function breakDoor(s) {
   const d = s.door; if (!d || d.broken) return;
   d.broken = true; d.t = 0; s.off = true;
@@ -1219,12 +1250,16 @@ function breakDoor(s) {
 function raceObstacles(el, dt) {
   for (const lg of raceLogs) { lg.ang = lg.ph + lg.dir * lg.speed * el; lg.g.rotation.y = -lg.ang; }
   for (const pu of racePushers) {
-    const ox = pu.m.position.x; pu.m.position.x = Math.sin(el * pu.sp + pu.ph) * 4.25;
-    pu.s.vx = Math.cos(el * pu.sp + pu.ph) * 4.25 * pu.sp; pu.s.delta = { x: pu.m.position.x - ox, z: 0 };
+    const ox = pu.m.position.x; pu.m.position.x = Math.sin(el * pu.sp + pu.ph) * pu.amp;
+    pu.s.vx = Math.cos(el * pu.sp + pu.ph) * pu.amp * pu.sp; pu.s.delta = { x: pu.m.position.x - ox, z: 0 };
   }
   for (const st of raceStones) {
-    const ox = st.m.position.x; if (st.moves) st.m.position.x = st.bx + Math.sin(el * 1.1 + st.ph) * 1.2;
+    const ox = st.m.position.x; if (st.moves) st.m.position.x = st.bx + Math.sin(el * 1.3 + st.ph) * 1.5;
     st.s.delta = { x: st.m.position.x - ox, z: 0 };
+  }
+  for (const v of raceVT) {
+    if (v.state === 'shake') { v.t += dt; v.m.material.color.copy(WARN_A).lerp(WARN_B, Math.min(1, v.t / 0.7)); if (v.t > 0.7) { v.state = 'gone'; v.t = 0; v.s.off = true; v.m.visible = false; } }
+    else if (v.state === 'gone') { v.t += dt; if (v.t > 3) { v.state = 'up'; v.s.off = false; v.m.visible = true; v.m.material.color.set(v.col); } }
   }
   for (const d of raceDoors) if (d.broken && d.t < 1.2) { d.t += dt; d.m.rotation.x = -Math.min(1, d.t * 2.2) * Math.PI / 2; d.m.position.y = 1.5 - Math.min(1, d.t * 2.2) * 1.3; d.m.position.z = d.z - Math.min(1, d.t * 2.2) * 1.3; if (d.t >= 1.2) d.m.visible = false; }
   // other players running through a real door open it on your screen too
@@ -1232,6 +1267,7 @@ function raceObstacles(el, dt) {
     const pts = [];
     for (const r of NET.remotes.values()) if (r.ch.root.visible) pts.push(r.p.pos);
     for (const b of bots) if (b.alive && b.ch.root.visible) pts.push(b.p.pos);
+    for (const v of raceVT) if (v.state === 'up') for (const q of pts) if (Math.abs(q.x - v.m.position.x) < 1.2 && Math.abs(q.z - v.m.position.z) < 1.1 && Math.abs(q.y) < 0.3) { vtileStep(v.s); break; }
     for (const d of raceDoors) if (d.s.real && !d.broken) for (const q of pts) if (Math.abs(q.x - d.x) < 1.4 && Math.abs(q.z - d.z) < 0.9 && q.y < 3) { breakDoor(d.s); break; }
   }
 }
@@ -1293,9 +1329,29 @@ function raceBot(b, dt) {
   } else if (z > -266) {
     const st = raceStones.find(s => s.z < z - 0.6) || null;
     if (st) { tx = st.m.position.x; tz = st.z; }
-  } else { tx = b.lane * 0.4; tz = -278; }
+  } else if (z > -274.5) { tx = 0; tz = -276; }
+  else if (z > -290) {                                           // the beam: stay in the middle, wait for the hammers
+    tx = 0;
+    // look ahead: will the next hammer swing through while I run past it?
+    const h = racePushers.find(q => q.amp === 3.2 && z - q.z > -1.2 && z - q.z < 2.3);
+    if (h && z - h.z > 1.2) {
+      const tc = (z - h.z + 1.2) / 5.5; let safe = true;
+      for (let t = 0; t <= tc + 0.1; t += 0.05) if (Math.abs(Math.sin((SP.elapsed + t) * h.sp + h.ph) * h.amp) < 1.6) { safe = false; break; }
+      if (!safe && Math.random() < b.skill + 0.25) return [0, 0, 0];
+    }
+  } else if (z > -296.3) { tx = Math.max(-2.5, Math.min(2.5, b.lane)); }
+  else if (z > -312) {                                           // vanishing tiles: pick a lane whose next tile is still there
+    const col = [-2.5, 0, 2.5].sort((u, v) => Math.abs(u - p.pos.x) - Math.abs(v - p.pos.x)).find(cx => groundAt(cx, z - 2.2)) ?? 0;
+    tx = col;
+  } else if (z > -316.6) { tx = Math.max(-3, Math.min(3, b.lane)); }
+  else if (z > -333) {                                           // stairs: hop up, dodge the pushers
+    tx = Math.max(-3.5, Math.min(3.5, b.lane));
+    if (p.grounded) p.buffer = 0.1;
+    const pu = racePushers.find(q => q.amp === 2.8 && z - q.z > 0.6 && z - q.z < 3);
+    if (pu) { const soon = pu.m.position.x + (pu.s.vx || 0) * 0.5; tx = soon > 0 ? -3.2 : 3.2; }
+  } else { tx = b.lane * 0.4; tz = -346; }
   let wx = tx - p.pos.x, wz = tz - z; const d = Math.hypot(wx, wz) || 1; wx /= d; wz /= d;
-  if (z < -247 && z > -267 && p.grounded && !groundAt(p.pos.x + wx * 0.9, z + wz * 0.9)) p.buffer = 0.1;
+  if (((z < -247 && z > -267) || (z < -295.5 && z > -312.5)) && p.grounded && !groundAt(p.pos.x + wx * 0.9, z + wz * 0.9)) p.buffer = 0.1;
   return [wx, wz, 1];
 }
 
@@ -1330,7 +1386,7 @@ function startRound(game, opts = {}) {
   $('resAgain').style.display = '';
   mode = 'countdown'; SP.cd = 3.5; SP.elapsed = 0; SP.placings = []; SP.spectate = false; SP.over = false; SP.winners = null; SP.firstFin = null; SP.finOrder = [];
   SP.ang = Math.random() * Math.PI; SP.speed = 0.5; SP.bars = 1; SP.fallT = 2.5; bar2.visible = false;
-  if (game === 'spin') for (const tl of arenaTiles) { tl.state = 'up'; tl.t = 0; tl.s.off = false; tl.m.visible = true; tl.m.position.set(tl.bx, -0.25, tl.bz); tl.m.material.color.set(tl.col); }
+  if (game === 'spin') resetSpinTiles();
   if (game === 'spleef') resetSpleef();
   if (game === 'race') resetRace(SP.round);
   NET.outAt = null; NET.finT = null; NET.touched = [];
@@ -1358,6 +1414,7 @@ function startRound(game, opts = {}) {
   $('timer').style.display = game === 'race' ? 'block' : 'none'; $('timer').textContent = '0.0 s';
   $('hudSub').textContent = GAME_NAMES[game]; sfx.chime();
 }
+function resetSpinTiles() { for (const tl of arenaTiles) { tl.state = 'up'; tl.t = 0; tl.s.off = false; tl.m.visible = true; tl.m.position.set(tl.bx, -0.25, tl.bz); tl.m.rotation.set(0, 0, 0); tl.m.material.color.set(tl.col); } }
 function roundHumans() { return SP.entities.filter(e => !e.bot); }
 function finishEntity(e, t) {
   if (e.finished) return;
@@ -1371,7 +1428,7 @@ function raceChecks(e) {
   const P = e.p;
   if (P.grounded) for (const cz of RC.cps) if (P.pos.z < cz && cz < e.cpZ) { e.cpZ = cz; if (e.me) { toast('Checkpoint!', 900); sfx.chime(); } }
   if (P.pos.y < RC.out) { raceSpawnFor(e); if (e.me) { sfx.poof(); toast('Splash! Back to the checkpoint.', 1400); } }
-  if (!e.finished && P.pos.z < RC.finishZ && P.pos.y > -1) { finishEntity(e, SP.elapsed); if (e.me) { NET.finT = Math.round(SP.elapsed * 100) / 100; netSendPresence(true); } }
+  if (!e.finished && P.pos.z < RC.finishZ && P.pos.y > RC.top - 1) { finishEntity(e, SP.elapsed); if (e.me) { NET.finT = Math.round(SP.elapsed * 100) / 100; netSendPresence(true); } }
 }
 function animateTiles(dt, decide = false) {
   for (const tl of arenaTiles) {
@@ -1503,7 +1560,7 @@ function updateRound(dt) {
     $('timer').textContent = SP.elapsed.toFixed(1) + ' s';
     $('hudSub').textContent = 'Obstacle Course · ' + fin + '/' + SP.entities.length + ' finished · Q to leave';
     const humansDone = roundHumans().every(e => e.finished || e.left);
-    if (humansDone || (SP.firstFin !== null && SP.elapsed > SP.firstFin + 25) || SP.elapsed > 180) { over = true; big = SP.finOrder.length ? SP.finOrder[0].name + ' wins!' : 'Time!'; }
+    if (humansDone || (SP.firstFin !== null && SP.elapsed > SP.firstFin + 30) || SP.elapsed > 240) { over = true; big = SP.finOrder.length ? SP.finOrder[0].name + ' wins!' : 'Time!'; }
   } else {
     const alive = aliveCount();
     $('hudSub').textContent = GAME_NAMES[G] + ' · ' + alive + ' left · ' + Math.floor(SP.elapsed) + ' s · Q to leave';
@@ -1551,11 +1608,12 @@ function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp
 function leaveSpinner() {
   mode = 'lobby'; $('results').classList.add('hidden'); $('big').style.display = 'none'; $('big').style.fontSize = ''; $('timer').style.display = 'none';
   for (const b of bots) { b.ch.root.visible = false; b.alive = false; }
+  resetSpinTiles(); resetSpleef(); resetRace('lobby'); bar2.visible = false;
   SP.online = false; SP.isHost = false; SP.res = null; NET.outAt = null; NET.finT = null; NET.touched = []; NET.ready = 0; $('resAgain').style.display = '';
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.4'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.4.1'; requestLock();
 }
 $('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
@@ -2001,7 +2059,7 @@ function renderOnlinePanel() {
   let conn = '?'; try { conn = NET.room.connected() ? 'connected' : 'not connected'; } catch (e) { conn = 'error'; }
   const others = NET.peers.filter(pr => !pr.sameTab).length;
   let viewing = '?'; try { viewing = NET.p2p ? others : Math.max(0, NET.api.peers().filter(pr => pr.kind === 'viewer').length - 1); } catch (e) {}
-  $('onDiag').textContent = (NET.p2p ? 'Website mode · ' : '') + 'Room status: ' + conn + ' · others in this room: ' + others + ' · others viewing the game: ' + viewing + ' · sending your position: ' + (NET.sendErr ? 'problem (' + NET.sendErr + ')' : NET.sendOk ? 'OK' : 'starting') + (NET.peerErr ? ' · room error: ' + NET.peerErr : '') + ' · v0.4';
+  $('onDiag').textContent = (NET.p2p ? 'Website mode · ' : '') + 'Room status: ' + conn + ' · others in this room: ' + others + ' · others viewing the game: ' + viewing + ' · sending your position: ' + (NET.sendErr ? 'problem (' + NET.sendErr + ')' : NET.sendOk ? 'OK' : 'starting') + (NET.peerErr ? ' · room error: ' + NET.peerErr : '') + ' · v0.4.1';
 }
 function updateOnlineBtn() {
   const b = $('onlineBtn');
