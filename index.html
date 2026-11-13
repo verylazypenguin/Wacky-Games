@@ -51,7 +51,7 @@
 </style>
 </head>
 <body>
-<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.3.3</div></div>
+<div id="hud"><div class="t">Wacky Games</div><div class="s" id="hudSub">Lobby · v0.4</div></div>
 <div id="timer"></div>
 <div id="big"></div>
 <div id="prompt"></div>
@@ -70,11 +70,12 @@
       <tr><td>Space, then Space again</td><td>jump, then dive in mid-air (great for long gaps)</td></tr>
       <tr><td>E</td><td>use: skins booth, locker, play pads</td></tr>
       <tr><td>Q</td><td>leave the parkour, back to the lobby</td></tr>
+      <tr><td>R</td><td>respawn (in the Obstacle Course: back to your checkpoint)</td></tr>
       <tr><td>O</td><td>play online with friends</td></tr>
       <tr><td>Esc</td><td>free the mouse</td></tr>
     </table>
     <button class="btn" id="go">Play</button>
-    <div class="small">New in v0.3: play online with friends. Press O in the lobby.</div>
+    <div class="small">New in v0.4: Spleef (pad 2) and the Obstacle Course (pad 3), alone or online with friends.</div>
   </div>
 </div>
 
@@ -93,7 +94,7 @@
     </div>
     <div id="onIn" style="display:none">
       <p style="margin:6px 0">Room code: <b id="onCodeShow" style="font-size:1.6rem;color:#5b4bc4;letter-spacing:.1em"></b></p>
-      <p style="color:#6a62a8;font-weight:500;margin:4px 0">Everyone here sees each other in the lobby. Anyone can step on pad 1 to start Spinner together (the host's game fills empty spots with computer players).</p>
+      <p style="color:#6a62a8;font-weight:500;margin:4px 0">Everyone here sees each other in the lobby. Anyone can step on a play pad to start that game together: 1 Spinner, 2 Spleef, 3 Obstacle Course (the host's game fills empty spots with computer players).</p>
       <ul id="onList" style="font-weight:700;line-height:1.7"></ul>
       <p id="onDiag" style="font-size:.85rem;color:#8a84b8;font-weight:600;margin:0 0 10px"></p>
       <button class="btn" id="onLeave" style="background:#8a84b8;box-shadow:0 6px 0 #5f5a8c">Leave room</button>
@@ -121,7 +122,13 @@
     <div class="row"><b>Colour</b><div class="opts" id="optColour"></div></div>
     <div class="row"><b>Pattern</b><div class="opts" id="optPattern"></div></div>
     <div class="row"><b>Hat</b><div class="opts" id="optHat"></div></div>
+    <div class="row"><b>Backpack</b><div class="opts" id="optBack"></div></div>
     <div class="row"><b>Trail</b><div class="opts" id="optTrail"></div></div>
+    <div class="row" style="border-top:2px solid #f0edfb;padding-top:10px"><b>Move your progress</b>
+      <div style="color:#8a84b8;font-weight:600;font-size:.92rem;margin-bottom:6px">The Claude version and the website each keep their own times, skins and quests. Copy your code from one, then paste it into the other and press Load.</div>
+      <textarea id="progCode" rows="3" spellcheck="false" style="width:100%;font:600 .8rem monospace;border:3px solid #e4e0fa;border-radius:12px;padding:6px 10px;color:#2a2350;resize:vertical" placeholder="Your progress code appears here, or paste one in"></textarea>
+      <div class="opts" style="margin-top:6px"><button class="opt" id="progShow">Show my code</button><button class="opt" id="progCopy">Copy</button><button class="opt" id="progLoad">Load pasted code</button></div>
+    </div>
     <div style="text-align:center;margin-top:14px"><button class="btn" id="skinsDone">Done</button></div>
   </div>
 </div>
@@ -176,12 +183,16 @@ addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); ca
 
 /* ---------- helpers for building the world ---------- */
 const solids = []; // collision boxes {min, max, mesh, vel?}
+let buildZone = 'lobby';   // each game's arena has its own list of collision boxes
+const zoneCache = {};
+function zoneSolids(z) { return zoneCache[z] || (zoneCache[z] = solids.filter(s => s.zone === z)); }
+function activeZone() { return mode === 'lobby' ? 'lobby' : SP.game; }
 const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, metalness: 0, ...extra });
 function box(cx, cy, cz, sx, sy, sz, color, solid = true, opts = {}) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), typeof color === 'string' ? mat(color) : color);
   m.position.set(cx, cy, cz); m.castShadow = opts.cast !== false; m.receiveShadow = true;
   scene.add(m);
-  if (solid) solids.push({ mesh: m, half: new THREE.Vector3(sx / 2, sy / 2, sz / 2), tag: opts.tag || null });
+  if (solid) solids.push({ mesh: m, half: new THREE.Vector3(sx / 2, sy / 2, sz / 2), tag: opts.tag || null, zone: buildZone });
   return m;
 }
 function solidBounds(s) {
@@ -191,7 +202,7 @@ function solidBounds(s) {
 function cyl(x, y, z, r, h, color, solid = false, seg = 32) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), typeof color === 'string' ? mat(color) : color);
   m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
-  if (solid) solids.push({ mesh: m, half: new THREE.Vector3(r * 0.9, h / 2, r * 0.9), tag: null });
+  if (solid) solids.push({ mesh: m, half: new THREE.Vector3(r * 0.9, h / 2, r * 0.9), tag: null, zone: buildZone });
   return m;
 }
 const signRedraws = [];
@@ -265,8 +276,8 @@ const SPAWN = new THREE.Vector3(0, 0.01, 6);
 // PLAY PADS (three numbered pads at the north side)
 const GAMES = [
   { n: 1, name: 'SPINNER', col: '#ff5fa2', when: 'now' },
-  { n: 2, name: 'SPLEEF', col: '#3fb8ff', when: 'v0.4' },
-  { n: 3, name: 'OBSTACLE COURSE', col: '#ffb020', when: 'v0.4' },
+  { n: 2, name: 'SPLEEF', col: '#3fb8ff', when: 'now' },
+  { n: 3, name: 'OBSTACLE COURSE', col: '#ffb020', when: 'now' },
 ];
 const pads = [];
 GAMES.forEach((gm, i) => {
@@ -407,7 +418,8 @@ function drawLeaderboard() {
     g.textAlign = 'right'; g.fillText(r.t.toFixed(2) + ' s', W - 48, y + 34);
   });
   g.textAlign = 'center'; g.fillStyle = '#8a84b8'; g.font = '600 22px "Baloo 2", sans-serif';
-  if (save.lastRun) { g.fillStyle = '#5b4bc4'; g.font = '700 26px "Baloo 2", sans-serif'; g.fillText('Your last run: ' + save.lastRun.toFixed(2) + ' s', W / 2, H - 58); }
+  { const mb = typeof myBest === 'function' ? myBest() : null; const bits = []; if (mb !== null) bits.push('Your best: ' + mb.toFixed(2) + ' s'); if (save.lastRun) bits.push('last run: ' + save.lastRun.toFixed(2) + ' s');
+    if (bits.length) { g.fillStyle = '#5b4bc4'; g.font = '700 26px "Baloo 2", sans-serif'; g.fillText(bits.join(' · '), W / 2, H - 58); } }
   g.fillStyle = '#8a84b8'; g.font = '600 22px "Baloo 2", sans-serif';
   g.fillText(typeof NET !== 'undefined' && NET.room ? 'Best times of everyone in your room' : 'Best time per player · on this computer', W / 2, H - 24);
   lbTex.needsUpdate = true;
@@ -428,11 +440,11 @@ const QUESTS = [
   { text: 'Finish the parkour course', reward: 'Golden crown', live: true },
   { text: 'Finish parkour in under 60 s', reward: 'Halo', live: true },
   { text: 'Win a round of Spinner', reward: 'Comet trail', live: true },
-  { text: 'Win a round of Spleef', reward: 'Shovel backpack', live: false },
-  { text: 'Finish the obstacle course', reward: 'Rainbow skin', live: false },
+  { text: 'Win a round of Spleef', reward: 'Shovel backpack', live: true },
+  { text: 'Finish the obstacle course', reward: 'Rainbow suit outfit', live: true },
   { text: 'Speedrun: parkour in under 15 s', reward: 'Flame suit outfit', live: true },
 ];
-let save = { colour: 0, pattern: 0, hat: 'none', outfit: 'none', done: [false, false, false, false, false, false], best: null, name: 'Player', runs: [] };
+let save = { colour: 0, pattern: 0, hat: 'none', outfit: 'none', back: 'none', done: [false, false, false, false, false, false], best: null, name: 'Player', runs: [] };
 try { const s = JSON.parse(localStorage.getItem('wobbleRumble') || 'null'); if (s) save = Object.assign(save, s); } catch (e) {}
 function grantEarnedRewards() {
   const best = Math.min(save.best ?? Infinity, ...(save.runs2 || []).map(r => r.t));
@@ -501,7 +513,8 @@ function makeCharacter() {
   const legL = limb(-0.2, 0.42, 0.18, 0.15, legMat), legR = limb(0.2, 0.42, 0.18, 0.15, legMat);
   const outfitSlot = new THREE.Group(); tilt.add(outfitSlot);
   const hatSlot = new THREE.Group(); hatSlot.position.y = 1.755; tilt.add(hatSlot);
-  return { root, tilt, body, bodyMat, limbMat, legMat, armL, armR, legL, legR, hatSlot, face, outfitSlot };
+  const backSlot = new THREE.Group(); tilt.add(backSlot);
+  return { root, tilt, body, bodyMat, limbMat, legMat, armL, armR, legL, legR, hatSlot, face, outfitSlot, backSlot };
 }
 function makeHat(id) {
   const g = new THREE.Group();
@@ -529,6 +542,23 @@ function makeHat(id) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+const BACKS = [{ id: 'none', name: 'None' }, { id: 'shovel', name: 'Shovel backpack', quest: 3 }];
+function makeBack(id) {
+  const g = new THREE.Group();
+  if (id === 'shovel') {
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.26), mat('#3fa66b')); pack.position.set(0, 1.0, -0.56); g.add(pack);
+    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.18, 0.28), mat('#2f8a56')); flap.position.set(0, 1.22, -0.56); g.add(flap);
+    const strap = mat('#2a2350');
+    for (const sx of [-0.17, 0.17]) { const st = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.025, 6, 20, Math.PI * 0.7), strap); st.position.set(sx, 1.05, -0.12); st.rotation.set(0, Math.PI / 2, Math.PI * 0.62); g.add(st); }
+    const sh = new THREE.Group(); sh.position.set(0.12, 1.1, -0.74); sh.rotation.z = -0.5;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8), mat('#a8784e')); sh.add(handle);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.05), mat('#a8784e')); grip.position.y = -0.5; sh.add(grip);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.03), mat('#c7ced8', { metalness: 0.6, roughness: 0.3 })); blade.position.y = 0.62; sh.add(blade);
+    g.add(sh);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 const hero = makeCharacter();
 scene.add(hero.root);
 const OUTFITS = [
@@ -538,6 +568,7 @@ const OUTFITS = [
   { id: 'bee', name: 'Bee', arms: '#2a2a2a', legs: '#2a2a2a' },
   { id: 'penguin', name: 'Penguin', arms: '#22232b', legs: '#ff9a2e' },
   { id: 'flame', name: 'Flame suit', arms: '#ff6a1a', legs: '#ff4a1a', quest: 5 },
+  { id: 'rainbow', name: 'Rainbow suit', arms: '#ff5f8a', legs: '#7b6cff', quest: 4 },
 ];
 // the body texture wraps round the bean; its front (where the face is) sits at the left and right edges
 function outfitTexture(id) {
@@ -559,6 +590,10 @@ function outfitTexture(id) {
   } else if (id === 'penguin') {
     g.fillStyle = '#22232b'; g.fillRect(0, 0, W, H);
     g.fillStyle = '#f7f7f2'; front(x => { g.beginPath(); g.ellipse(x, H * 0.55, 120, 125, 0, 0, 7); g.fill(); });
+  } else if (id === 'rainbow') {
+    const rc = ['#ff5f5f', '#ff9a3c', '#ffd23f', '#7bdc7a', '#3fb8ff', '#a37cff'];
+    for (let i = 0; i < 12; i++) { g.fillStyle = rc[i % 6]; g.fillRect(i * W / 12, 0, W / 12 + 1, H); }
+    g.fillStyle = 'rgba(255,255,255,0.8)'; for (let i = 0; i < 30; i++) { const x = (i * 97) % W, y = (i * 59) % H; g.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? 2 : 7, a = k * Math.PI / 4; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.fill(); }
   } else if (id === 'flame') {
     const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#5a0d0d'); gr.addColorStop(1, '#c4200f'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
     for (const [col, hgt] of [['#ff6a1a', 0.75], ['#ffb020', 0.5], ['#ffe066', 0.28]]) {
@@ -598,6 +633,8 @@ function outfitParts(id) {
 function applySkinTo(ch, s) {
   const of = OUTFITS.find(o => o.id === (s.outfit || 'none')) || OUTFITS[0];
   ch.outfitSlot.clear();
+  ch.backSlot.clear(); if (s.back && s.back !== 'none' && BACKS.some(b => b.id === s.back)) ch.backSlot.add(makeBack(s.back));
+  ch.rainbow = of.id === 'rainbow';
   ch.hatSlot.clear(); if (s.hat && s.hat !== 'none' && HATS.some(h => h.id === s.hat)) ch.hatSlot.add(makeHat(s.hat));
   if (of.id !== 'none') {
     ch.bodyMat.map = outfitTexture(of.id); ch.bodyMat.color.set('#ffffff');
@@ -650,8 +687,9 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
     const target = CONFIG.runSpeed;
     const a = p.grounded ? CONFIG.accel : CONFIG.airAccel;
     if (il > 0) {
-      p.vel.x += clamp(wx * target - p.vel.x, -a * dt, a * dt);
-      p.vel.z += clamp(wz * target - p.vel.z, -a * dt, a * dt);
+      const tg = target * Math.min(1, il);
+      p.vel.x += clamp(wx * tg - p.vel.x, -a * dt, a * dt);
+      p.vel.z += clamp(wz * tg - p.vel.z, -a * dt, a * dt);
       p.facing = angLerp(p.facing, Math.atan2(wx, wz), Math.min(1, dt * 14));
     } else if (p.grounded) {
       const sp = Math.hypot(p.vel.x, p.vel.z), drop = CONFIG.friction * dt;
@@ -678,7 +716,8 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
   // vertical move
   p.pos.y += p.vel.y * dt;
   const wasGrounded = p.grounded; p.grounded = false; p.ground = null;
-  for (const s of solids) {
+  const list = zoneSolids(activeZone());
+  for (const s of list) {
     if (s.off) continue;
     const b = solidBounds(s);
     if (!circleRect(p.pos.x, p.pos.z, p.r * 0.85, b).hit) continue;
@@ -698,12 +737,14 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
   p.lastVy = p.vel.y;
   // horizontal move with push-out (and small step-ups)
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt;
-  for (let pass = 0; pass < 2; pass++) for (const s of solids) {
+  for (let pass = 0; pass < 2; pass++) for (const s of list) {
     if (s.off) continue;
     const b = solidBounds(s);
     if (p.pos.y >= b.maxY - 0.01 || p.pos.y + p.h <= b.minY) continue;
     const c = circleRect(p.pos.x, p.pos.z, p.r, b);
     if (!c.hit) continue;
+    if (s.tag === 'door' && s.real) { breakDoor(s); continue; }
+    if (s.tag === 'pusher' && !(p.knockT > 0)) { p.knockT = 0.5; const dir = Math.sign(s.vx || (p.pos.x - s.mesh.position.x)) || 1; p.vel.x = dir * 5.5; p.vel.z = Math.sign(p.pos.z - s.mesh.position.z || 1) * 4; p.vel.y = 5; p.grounded = false; p.diving = false; p.recover = 0.35; if (me) { sfx.bonk(); shakeCam = 0.2; } }
     if (b.maxY - p.pos.y < 0.4 && p.vel.y <= 0.1) { p.pos.y = b.maxY; p.grounded = true; p.ground = s; continue; }
     if (c.d > 0.0001) { const push = p.r - c.d; p.pos.x += c.dx / c.d * push; p.pos.z += c.dz / c.d * push; const nx = c.dx / c.d, nz = c.dz / c.d, vn = p.vel.x * nx + p.vel.z * nz; if (vn < 0) { p.vel.x -= vn * nx; p.vel.z -= vn * nz; } }
     else { // centre inside the box: push out along the shortest axis
@@ -713,8 +754,11 @@ function physicsFor(p, wx, wz, il, dt, firstStep) {
   }
   if (me && p.grounded && p.ground && p.ground !== p.standingOn) onLand(p.ground);
   if (!p.grounded || (p.ground && p.ground !== p.standingOn)) p.standingOn = p.grounded ? p.ground : null;
-  if (me) sweeperHit(p);
-  if (mode !== 'lobby') spinnerBarHit(p);
+  if (me && mode === 'lobby') sweeperHit(p);
+  if (p.knockT > 0) p.knockT -= dt;
+  if (mode !== 'lobby' && SP.game === 'spin') spinnerBarHit(p);
+  if (mode !== 'lobby' && SP.game === 'race') raceLogHit(p);
+  if (mode !== 'lobby' && SP.game === 'spleef' && p.grounded && p.ground && p.ground.tag === 'hex') spleefStep(p.ground, me);
   if (me && p.grounded && p.ground && p.ground.tag === 'vanish') { const v = vanish.find(v => v.s === p.ground); if (v && v.t < 0 && !v.s.off) v.t = 0; }
   if (p.grounded && p.diving) { p.diving = false; p.recover = CONFIG.diveRecover; p.squash = 0.8; }
   if (p.diving && p.diveT > 3) p.diving = false; // safety net: never stay stuck in a dive
@@ -724,7 +768,7 @@ let mushBounce = 0;
 
 function nearGround() {
   const p = player;
-  for (const s of solids) {
+  for (const s of zoneSolids(activeZone())) {
     if (s.off) continue;
     const b = solidBounds(s);
     if (p.pos.y - b.maxY >= -0.05 && p.pos.y - b.maxY < 0.3 && circleRect(p.pos.x, p.pos.z, p.r * 1.1, b).hit) { p.coyote = Math.max(p.coyote, 0.05); return true; }
@@ -795,7 +839,8 @@ function finishParkour() {
   if (!save.done[0]) { save.done[0] = true; msg += '<br>Quest complete: Golden crown unlocked!'; }
   if (t < 15 && !save.done[5]) { save.done[5] = true; msg += '<br>SPEEDRUN! Flame suit outfit unlocked!'; }
   if (t < 60 && !save.done[1]) { save.done[1] = true; msg += '<br>Quest complete: Halo unlocked!'; }
-  persist(); drawQuestBoard(); toast(msg, 4500);
+  persist(); drawQuestBoard(); drawLeaderboard(); toast(msg, 4500);
+  if (typeof NET !== 'undefined' && NET.room) netSendPresence(true);
   confetti(player.pos);
   setTimeout(() => { if (!parkour.running) $('timer').style.display = 'none'; }, 5000);
 }
@@ -845,6 +890,12 @@ function toast(html, ms = 2200) { const t = $('toast'); t.innerHTML = html; t.cl
 function buildSkinsPanel() {
   const oc = $('optColour'), op = $('optPattern'), oh = $('optHat'), ot = $('optTrail'), oo = $('optOutfit');
   oc.innerHTML = ''; op.innerHTML = ''; oh.innerHTML = ''; ot.innerHTML = ''; oo.innerHTML = '';
+  const ob = $('optBack'); ob.innerHTML = '';
+  BACKS.forEach(bk => {
+    const locked = bk.quest !== undefined && !save.done[bk.quest];
+    const b = document.createElement('button'); b.className = 'opt' + ((save.back || 'none') === bk.id ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + bk.name : bk.name;
+    b.onclick = () => { if (locked) { toast('Locked. Quest: ' + QUESTS[bk.quest].text); return; } save.back = bk.id; persist(); applySkin(); buildSkinsPanel(); sfx.click(); }; ob.appendChild(b);
+  });
   OUTFITS.forEach(of => {
     const locked = of.quest !== undefined && !save.done[of.quest];
     const b = document.createElement('button'); b.className = 'opt' + ((save.outfit || 'none') === of.id ? ' sel' : '') + (locked ? ' locked' : ''); b.textContent = locked ? '🔒 ' + of.name : of.name;
@@ -881,6 +932,35 @@ function buildSkinsPanel() {
 function openSkins() { $('nameIn').value = save.name || 'Player'; panelOpen = true; if (document.pointerLockElement) document.exitPointerLock(); buildSkinsPanel(); $('skins').classList.remove('hidden'); }
 function closeSkins() { const nm = $('nameIn').value.trim(); if (nm) { save.name = nm; persist(); } panelOpen = false; $('skins').classList.add('hidden'); for (const k in keys) keys[k] = false; requestLock(); }
 $('skinsDone').onclick = closeSkins;
+// progress codes: carry times, skins and quests between the Claude version and the website
+function progressCode() {
+  const keep = { name: save.name, colour: save.colour, pattern: save.pattern, hat: save.hat, outfit: save.outfit, back: save.back, trail: save.trail, done: save.done, chest: !!save.chest, runs2: save.runs2 || [], best: save.best, course: save.course };
+  return 'WG1-' + btoa(unescape(encodeURIComponent(JSON.stringify(keep))));
+}
+function loadProgress(code) {
+  let d;
+  try { d = JSON.parse(decodeURIComponent(escape(atob(String(code).trim().replace(/^WG1-/, '').replace(/\s+/g, ''))))); } catch (e) { toast("That code didn't work.<br>Copy the whole code and try again.", 3000); return; }
+  if (!d || typeof d !== 'object') { toast("That code didn't work.", 2500); return; }
+  const num = (v, a, b) => typeof v === 'number' && isFinite(v) && v >= a && v <= b;
+  if (Array.isArray(d.done)) for (let i = 0; i < save.done.length; i++) if (d.done[i] === true) save.done[i] = true;
+  if (d.chest === true) save.chest = true;
+  const runs = Array.isArray(d.runs2) ? d.runs2.filter(r => r && typeof r.name === 'string' && num(r.t, 3, 3600)).map(r => ({ name: r.name.slice(0, 20), t: r.t })) : [];
+  save.runs2 = bestPerPlayer((save.runs2 || []).concat(runs));
+  if (num(d.best, 3, 3600) && d.course === 2) { if (save.course !== 2) { save.course = 2; save.best = null; } save.best = save.best === null || save.best === undefined ? d.best : Math.min(save.best, d.best); }
+  if (typeof d.name === 'string' && d.name.trim() && (!save.name || save.name === 'Player')) save.name = d.name.slice(0, 14);
+  if (num(d.colour, 0, COLOURS.length - 1)) save.colour = d.colour | 0;
+  if (num(d.pattern, 0, PATTERNS.length - 1)) save.pattern = d.pattern | 0;
+  if (HATS.some(h => h.id === d.hat)) save.hat = d.hat;
+  if (OUTFITS.some(o => o.id === d.outfit)) save.outfit = d.outfit;
+  if (BACKS.some(b => b.id === d.back)) save.back = d.back;
+  if (d.trail === 'comet' || d.trail === 'none') save.trail = d.trail;
+  persist(); grantEarnedRewards(); applySkin(); drawQuestBoard(); drawLeaderboard(); buildSkinsPanel(); $('nameIn').value = save.name || 'Player';
+  if (NET.room) netSendPresence(true);
+  sfx.fanfare(); toast('Progress loaded!<br>Your times, skins and quests are here now.', 3500);
+}
+$('progShow').onclick = () => { $('progCode').value = progressCode(); $('progCode').select(); };
+$('progCopy').onclick = async () => { const ta = $('progCode'); if (!ta.value.startsWith('WG1-')) ta.value = progressCode(); ta.select(); let ok = false; try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (x) {} } toast(ok ? 'Code copied!' : 'Press Ctrl+C to copy the selected code.', 2000); };
+$('progLoad').onclick = () => loadProgress($('progCode').value);
 
 let nearThing = null;
 function updatePrompt() {
@@ -893,12 +973,12 @@ function updatePrompt() {
   const el = $('prompt');
   if (!nearThing) { el.style.display = 'none'; return; }
   el.style.display = 'block';
-  el.textContent = nearThing === 'skins' ? '[E] Change your skin' : nearThing === 'locker' ? '[E] Open your locker' : nearThing.game.when === 'now' ? '[E] Play ' + nearThing.game.name + ' against 5 computer players' : '[E] ' + nearThing.game.name + ' (opens in ' + nearThing.game.when + ')';
+  el.textContent = nearThing === 'skins' ? '[E] Change your skin' : nearThing === 'locker' ? '[E] Open your locker' : nearThing.game.when === 'now' ? (NET.room ? '[E] Play ' + nearThing.game.name + ' with your room' : '[E] Play ' + nearThing.game.name + ' against 5 computer players') : '[E] ' + nearThing.game.name + ' (opens in ' + nearThing.game.when + ')';
 }
 function interact() {
   if (!nearThing) return;
   if (nearThing === 'skins' || nearThing === 'locker') openSkins();
-  else if (nearThing.game.when === 'now') { if (NET.room) netPadPressed(); else startSpinner(); }
+  else if (nearThing.game.when === 'now') { if (NET.room) netPadPressed(nearThing.game.n); else startRound(GAME_KEYS[nearThing.game.n - 1]); }
   else { sfx.chime(); toast(nearThing.game.name + ' arrives in ' + nearThing.game.when + '.<br>Try Spinner on pad 1!'); }
 }
 
@@ -917,10 +997,11 @@ addEventListener('mousemove', e => {
 });
 addEventListener('wheel', e => { camDist = clamp(camDist + Math.sign(e.deltaY) * 0.8, 4, 14); }, { passive: true });
 addEventListener('keydown', e => {
-  if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && !(e.target && e.target.tagName === 'INPUT')) e.preventDefault();
+  const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+  if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && !typing) e.preventDefault();
   if (!started) return;
   if (onlineOpen) { if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter') netJoin($('onCode').value); return; } if (e.code === 'Escape' || e.code === 'KeyO') closeOnline(); return; }
-  if (panelOpen) { if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE') closeSkins(); return; }
+  if (panelOpen) { if (typing) { if (e.code === 'Enter' && e.target.tagName === 'INPUT') closeSkins(); return; } if (e.code === 'Escape' || e.code === 'KeyE') closeSkins(); return; }
   keys[e.code] = true;
   if (e.repeat) return;
   audio();
@@ -929,6 +1010,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' && mode === 'lobby') interact();
   if (e.code === 'KeyO' && mode === 'lobby') openOnline();
   if (e.code === 'KeyR' && mode === 'lobby') respawn();
+  if (e.code === 'KeyR' && mode === 'play' && SP.game === 'race') { const me = SP.entities.find(x => x.me); if (me && !me.finished) { raceSpawnFor(me); sfx.poof(); } }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -937,8 +1019,9 @@ $('go').onclick = () => { audio(); started = true; $('start').classList.add('hid
 /* ---------- SPINNER (v0.2) ---------- */
 let mode = 'lobby';               // lobby | countdown | play | results
 const AR = { x: 200, z: 0, R: 14, size: 2.4, hub: 1.6 };
-const SP = { ang: 0, speed: 1.1, bars: 1, elapsed: 0, fallT: 2, cd: 0, entities: [], placings: [], spectate: false, over: false };
+const SP = { game: 'spin', ang: 0, speed: 1.1, bars: 1, elapsed: 0, fallT: 2, cd: 0, entities: [], placings: [], spectate: false, over: false };
 // arena: a floating disc of tiles around a tall hub, with a sweeping bar
+buildZone = 'spin';
 const arenaTiles = [], tileMap = new Map();
 for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) {
   const cx = i * AR.size, cz = j * AR.size, d = Math.hypot(cx, cz);
@@ -963,6 +1046,259 @@ function makeBar(rotY) {
 const bar1 = makeBar(0), bar2 = makeBar(Math.PI / 2); bar2.visible = false;
 signBoard(AR.x, 7.5, AR.z - AR.R - 3, 0, 6, 1.4, textSign([['SPINNER', 96, '#ff5fa2']], 512, 128), false);
 
+/* ---------- SPLEEF ARENA (v0.4): three layers of hexagon tiles that drop away after you step on them ---------- */
+buildZone = 'spleef';
+const SPL = { x: 0, z: 200, size: 2.2, R: 13.4, layers: [0, -5, -10], out: -13, shake: 0.75 };
+SPL.rowH = SPL.size * Math.sqrt(3) / 2;
+const hexTiles = [], hexMap = new Map();
+const hexGeo = new THREE.CylinderGeometry(SPL.size / Math.sqrt(3) * 0.96, SPL.size / Math.sqrt(3) * 0.96, 0.5, 6);
+const LAYER_COLS = [['#ff8fc6', '#ffb8dc'], ['#5cc0ff', '#9adcff'], ['#ffd23f', '#ffe68a']];
+SPL.layers.forEach((top, L) => {
+  for (let r = -9; r <= 9; r++) for (let c = -9; c <= 9; c++) {
+    const x = c * SPL.size + (r & 1 ? SPL.size / 2 : 0), z = r * SPL.rowH;
+    if (Math.hypot(x, z) > SPL.R) continue;
+    const col = LAYER_COLS[L][(r + c + 16) % 2];
+    const m = new THREE.Mesh(hexGeo, mat(col)); m.position.set(SPL.x + x, top - 0.25, SPL.z + z); m.castShadow = L === 0; m.receiveShadow = true; scene.add(m);
+    const s = { mesh: m, half: new THREE.Vector3(SPL.size / 2, 0.25, SPL.rowH / 2), tag: 'hex', zone: 'spleef' };
+    solids.push(s);
+    const t = { m, s, L, r, c, bx: m.position.x, by: m.position.y, bz: m.position.z, state: 'up', t: 0, vy: 0, col, idx: hexTiles.length, d: Math.hypot(x, z) };
+    s.hex = t; hexTiles.push(t); hexMap.set(L + ',' + r + ',' + c, t);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(SPL.R + 1.2, 0.22, 10, 80), mat(['#ff5fa2', '#3fb8ff', '#ffb020'][L])); ring.rotation.x = Math.PI / 2; ring.position.set(SPL.x, top - 0.6, SPL.z); scene.add(ring);
+});
+for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; cyl(SPL.x + Math.cos(a) * (SPL.R + 1.2), -6, SPL.z + Math.sin(a) * (SPL.R + 1.2), 0.3, 12, '#5b4bc4'); }
+signBoard(SPL.x, 6.5, SPL.z - SPL.R - 3, 0, 6, 1.4, textSign([['SPLEEF', 96, '#3fb8ff']], 512, 128), false);
+function hexAt(L, x, z) {
+  const r = Math.round((z - SPL.z) / SPL.rowH), c = Math.round((x - SPL.x - (r & 1 ? SPL.size / 2 : 0)) / SPL.size);
+  return hexMap.get(L + ',' + r + ',' + c);
+}
+function layerOf(y) { return y > -2.5 ? 0 : y > -7.5 ? 1 : 2; }
+function resetSpleef() {
+  for (const t of hexTiles) { t.state = 'up'; t.t = 0; t.vy = 0; t.s.off = false; t.m.visible = true; t.m.position.set(t.bx, t.by, t.bz); t.m.material.color.set(t.col); }
+  NET.touched = [];
+}
+// a tile you stand on shakes for a moment, then drops
+function spleefStep(s, me) {
+  const t = s.hex; if (!t || t.state !== 'up' || mode !== 'play') return;
+  t.state = 'shake'; t.t = 0;
+  if (me && SP.online && !SP.isHost) { NET.touched.push(t.idx); if (NET.touched.length > 40) NET.touched.shift(); }
+}
+function animateHex(dt) {
+  for (const t of hexTiles) {
+    if (t.state === 'shake') {
+      t.t += dt; t.m.position.x = t.bx + Math.sin(t.t * 55) * 0.05; t.m.position.y = t.by - t.t * 0.15;
+      t.m.material.color.set(Math.floor(t.t * 10) % 2 ? '#ffffff' : t.col);
+      if (t.t > SPL.shake) { t.state = 'fall'; t.s.off = true; t.vy = 0; t.m.position.x = t.bx; }
+    } else if (t.state === 'fall') {
+      t.vy -= 25 * dt; t.m.position.y += t.vy * dt; t.m.rotation.x += dt * 2;
+      if (t.m.position.y < t.by - 25) { t.state = 'gone'; t.m.visible = false; t.m.rotation.x = 0; }
+    }
+  }
+}
+function spleefLinks() {
+  if (hexTiles[0].nb) return;
+  for (const t of hexTiles) {
+    t.nb = []; t.hop = [];
+    for (const q of hexTiles) { if (q === t || q.L !== t.L) continue; const d = Math.hypot(q.bx - t.bx, q.bz - t.bz); if (d < SPL.size * 1.1) t.nb.push(q); else if (d < SPL.size * 2.05) t.hop.push(q); }
+  }
+}
+// find tiles we can reach by walking (or by hopping one gap), then head for a roomy one a few steps away
+function spleefPlan(b, cur) {
+  spleefLinks();
+  const seen = new Map([[cur, null]]), depth = new Map([[cur, 0]]), q = [cur], reach = [];
+  while (q.length) {
+    const t = q.shift(), dd = depth.get(t);
+    if (dd >= 6) continue;
+    for (const [list, hop] of [[t.nb, false], [t.hop, true]]) for (const n of list) {
+      if (n.state !== 'up' || seen.has(n)) continue;
+      if (hop && t.nb.some(m => m.state === 'up' && Math.hypot(m.bx - n.bx, m.bz - n.bz) < SPL.size * 1.1)) continue;   // only hop when you can't walk round
+      seen.set(n, t); depth.set(n, dd + 1); q.push(n); reach.push(n);
+    }
+  }
+  let best = null, bestS = 1e9;
+  for (const t of reach) {
+    const n = t.nb.filter(m => m.state === 'up').length, dd = depth.get(t);
+    const sc = Math.abs(dd - 3) * 1.2 - n * 0.8 + t.d * 0.15 + Math.random() * 2.5;
+    if (sc < bestS) { bestS = sc; best = t; }
+  }
+  if (!best) return null;
+  let step = best; while (seen.get(step) && seen.get(step) !== cur) step = seen.get(step);
+  return step;
+}
+function spleefBot(b, dt) {
+  const p = b.p, L = layerOf(p.pos.y);
+  if (b.wait > 0) { b.wait -= dt; return [0, 0, 0]; }
+  if (Math.random() < (1 - b.skill) * 0.12 * dt) b.wait = 0.3 + Math.random() * 0.4;
+  b.think -= dt;
+  const cur = p.grounded && p.ground && p.ground.hex ? p.ground.hex : hexAt(L, p.pos.x, p.pos.z);
+  const wpd = b.goal ? Math.hypot(b.goal.bx - p.pos.x, b.goal.bz - p.pos.z) : 0;
+  if (cur && p.grounded && (!b.goal || b.goal.state !== 'up' || b.goal.L !== L || b.think <= 0 || wpd < 0.8)) {
+    b.think = 0.35 + Math.random() * 0.2;
+    b.goal = spleefPlan(b, cur);
+  }
+  if (!b.goal) return [0, 0, 0];
+  const gx = b.goal.bx - p.pos.x, gz = b.goal.bz - p.pos.z, d = Math.hypot(gx, gz) || 1;
+  const wx = gx / d, wz = gz / d;
+  const ahead = hexAt(L, p.pos.x + wx * 1.0, p.pos.z + wz * 1.0);
+  if (p.grounded && d > 1.2 && (!ahead || ahead.state === 'fall' || ahead.state === 'gone') && Math.random() < b.skill + 0.2) p.buffer = 0.1;
+  const land = hexAt(L, p.pos.x + wx * 3.2, p.pos.z + wz * 3.2);
+  if (p.grounded && land && land.state === 'up' && Math.random() < 1.5 * dt * b.skill) p.buffer = 0.1;
+  return [wx, wz, 0.8];
+}
+
+/* ---------- OBSTACLE COURSE (v0.4): spinning logs, a wall of doors (some are fake!), pushers, stepping stones ---------- */
+buildZone = 'race';
+const RC = { cps: [-183, -206, -226, -248], finishZ: -270, out: -6, rows: [-211, -220] };
+box(0, -0.5, -182, 12, 1, 8, '#fff3c4');                    // start pad
+box(0, -0.5, -217, 12, 1, 62, '#cfe9ff');                   // logs, doors, pushers
+box(0, -0.5, -274, 12, 1, 16, '#fff3c4');                   // finish platform
+box(0, -3, -217, 11.4, 4, 61.4, '#c99a6b', false);
+for (const [z0, z1, c] of [[-186, -206, '#ffd6ea'], [-206, -226, '#d9f5c9'], [-226, -248, '#ffe9b0']]) {
+  const st = new THREE.Mesh(new THREE.PlaneGeometry(11.6, z0 - z1), mat(c)); st.rotation.x = -Math.PI / 2; st.position.set(0, 0.012, (z0 + z1) / 2); st.receiveShadow = true; scene.add(st);
+}
+for (const z of RC.cps.slice(1)) { const l = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.5), mat('#3fb8ff')); l.rotation.x = -Math.PI / 2; l.position.set(0, 0.02, z); scene.add(l); flag(-6.3, 0, z, '#3fb8ff'); }
+const raceGate = box(0, 1.5, -186.3, 12, 3, 0.3, new THREE.MeshStandardMaterial({ color: '#ff5f5f', transparent: true, opacity: 0.55 }), true, { tag: 'gate' });
+const raceGateS = solids[solids.length - 1];
+// spinning logs
+const raceLogs = [{ z: -192, dir: 1, speed: 1.5, ph: 0 }, { z: -201, dir: -1, speed: 1.8, ph: 1.2 }];
+for (const lg of raceLogs) {
+  cyl(0, 0.6, lg.z, 0.5, 1.2, '#5b4bc4', true, 20);
+  lg.g = new THREE.Group(); lg.g.position.set(0, 0, lg.z); scene.add(lg.g);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 11.6, 16), mat('#a8784e')); bar.rotation.z = Math.PI / 2; bar.position.y = 0.45; bar.castShadow = true; lg.g.add(bar);
+  for (const sx of [-1, 1]) { const cp = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), mat('#ffd23f')); cp.position.set(sx * 5.8, 0.45, 0); lg.g.add(cp); }
+  lg.ang = lg.ph;
+}
+// the door wall: two rows of five doors; some open when you run into them, the others are solid
+const raceDoors = [];
+RC.rows.forEach((z, row) => {
+  for (let k = 0; k < 5; k++) {
+    const x = -4.8 + k * 2.4;
+    const m = box(x, 1.5, z, 2.3, 3, 0.4, ['#ff7eb6', '#5cc0ff', '#ffd23f', '#8ee05a', '#a37cff'][k], true, { tag: 'door' });
+    const s = solids[solids.length - 1];
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), mat('#ffffff')); knob.position.set(0.7, 0, 0.22); m.add(knob);
+    const knob2 = knob.clone(); knob2.position.z = -0.22; m.add(knob2);
+    const d = { m, s, row, k, x, z, broken: false, t: 0 }; s.door = d; raceDoors.push(d);
+  }
+  box(0, 3.3, z, 12.4, 0.6, 0.6, '#5b4bc4', false); box(-6.1, 1.5, z, 0.2, 3, 0.6, '#5b4bc4', false); box(6.1, 1.5, z, 0.2, 3, 0.6, '#5b4bc4', false);
+});
+// pushers slide across the track
+const racePushers = [{ z: -231, sp: 1.3, ph: 0 }, { z: -237, sp: 1.7, ph: 2 }, { z: -243, sp: 1.5, ph: 4 }];
+for (const pu of racePushers) {
+  pu.m = box(0, 0.8, pu.z, 3.5, 1.6, 1.0, '#ff5f5f', true, { tag: 'pusher' }); pu.s = solids[solids.length - 1];
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.52, 0.3, 1.02), mat('#ffffff')); stripe.position.y = 0.3; pu.m.add(stripe);
+}
+// stepping stones over the water (two of them drift sideways)
+const raceStones = [-250.5, -254, -257.5, -261, -264.5].map((z, i) => {
+  const x = i % 2 ? 2.5 : -2.5;
+  const m = box(x, -0.5, z, 3.4, 1, 2.8, i % 2 ? '#8ee05a' : '#5fe0c0'); const s = solids[solids.length - 1];
+  return { m, s, bx: x, z, moves: i === 1 || i === 3, ph: i };
+});
+// finish arch
+box(-6.2, 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true); box(6.2, 2.5, RC.finishZ, 0.6, 5, 0.6, '#ff5fa2', true);
+box(0, 5.2, RC.finishZ, 13, 0.8, 0.8, '#ff5fa2', false);
+signBoard(0, 6.6, RC.finishZ + 0.5, 0, 5, 1.2, textSign([['FINISH', 90, '#ff5fa2']], 512, 128), false);
+{ const fl = new THREE.Mesh(new THREE.PlaneGeometry(12, 1), new THREE.MeshStandardMaterial({ map: (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 16; const g = c.getContext('2d'); for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#2a2350' : '#ffffff'; g.fillRect(i * 8, j * 8, 8, 8); } const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; return t; })() })); fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0.02, RC.finishZ); scene.add(fl); }
+signBoard(0, 6.5, -177, Math.PI, 7, 1.4, textSign([['OBSTACLE COURSE', 70, '#ffb020']], 512, 128), false);
+buildZone = 'lobby';
+
+function seededRand(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; }; }
+function resetRace(seed) {
+  const rnd = seededRand(String(seed || 'x'));
+  RC.real = [[], []];
+  for (const row of [0, 1]) { const ks = [0, 1, 2, 3, 4]; for (let i = 4; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ks[i], ks[j]] = [ks[j], ks[i]]; } RC.real[row] = ks.slice(0, 2); }
+  for (const d of raceDoors) { d.broken = false; d.t = 0; d.s.off = false; d.s.real = RC.real[d.row].includes(d.k); d.m.visible = true; d.m.position.set(d.x, 1.5, d.z); d.m.rotation.set(0, 0, 0); }
+  raceGateS.off = false; raceGate.visible = true;
+  raceObstacles(0, 0);
+  NET.finT = null;
+}
+function breakDoor(s) {
+  const d = s.door; if (!d || d.broken) return;
+  d.broken = true; d.t = 0; s.off = true;
+  if (Math.hypot(player.pos.x - d.x, player.pos.z - d.z) < 8) sfx.poof();
+}
+function raceObstacles(el, dt) {
+  for (const lg of raceLogs) { lg.ang = lg.ph + lg.dir * lg.speed * el; lg.g.rotation.y = -lg.ang; }
+  for (const pu of racePushers) {
+    const ox = pu.m.position.x; pu.m.position.x = Math.sin(el * pu.sp + pu.ph) * 4.25;
+    pu.s.vx = Math.cos(el * pu.sp + pu.ph) * 4.25 * pu.sp; pu.s.delta = { x: pu.m.position.x - ox, z: 0 };
+  }
+  for (const st of raceStones) {
+    const ox = st.m.position.x; if (st.moves) st.m.position.x = st.bx + Math.sin(el * 1.1 + st.ph) * 1.2;
+    st.s.delta = { x: st.m.position.x - ox, z: 0 };
+  }
+  for (const d of raceDoors) if (d.broken && d.t < 1.2) { d.t += dt; d.m.rotation.x = -Math.min(1, d.t * 2.2) * Math.PI / 2; d.m.position.y = 1.5 - Math.min(1, d.t * 2.2) * 1.3; d.m.position.z = d.z - Math.min(1, d.t * 2.2) * 1.3; if (d.t >= 1.2) d.m.visible = false; }
+  // other players running through a real door open it on your screen too
+  if (dt > 0) {
+    const pts = [];
+    for (const r of NET.remotes.values()) if (r.ch.root.visible) pts.push(r.p.pos);
+    for (const b of bots) if (b.alive && b.ch.root.visible) pts.push(b.p.pos);
+    for (const d of raceDoors) if (d.s.real && !d.broken) for (const q of pts) if (Math.abs(q.x - d.x) < 1.4 && Math.abs(q.z - d.z) < 0.9 && q.y < 3) { breakDoor(d.s); break; }
+  }
+}
+function raceLogHit(p) {
+  if (p.logCool > 0) { p.logCool -= 1 / 120; return; }
+  if (p.pos.y > 0.62 || p.pos.y + p.h < 0.27) return;
+  for (const lg of raceLogs) {
+    const rx = p.pos.x, rz = p.pos.z - lg.z, dx = Math.cos(lg.ang), dz = Math.sin(lg.ang);
+    const along = rx * dx + rz * dz, perp = Math.abs(-dz * rx + dx * rz);
+    if (Math.abs(along) > 5.9 || Math.abs(along) < 0.5 || perp > p.r + 0.18) continue;
+    const s = (Math.sign(along) || 1) * lg.dir, kx = -dz * s, kz = dx * s;
+    p.vel.x = kx * 5; p.vel.z = kz * 5; p.vel.y = 9; p.grounded = false; p.diving = false; p.launched = true; p.logCool = 0.6;
+    if (p === player) { sfx.bonk(); shakeCam = 0.25; }
+    return;
+  }
+}
+function groundAt(x, z) {
+  for (const s of zoneSolids('race')) { if (s.off) continue; const b = solidBounds(s); if (b.maxY > -0.2 && b.maxY < 0.3 && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) return true; }
+  return false;
+}
+function raceSpawnFor(e) { const z = e.cpZ + 1; e.p.pos.set((Math.random() - 0.5) * 6, 0.01, z === -182 ? -182 : z); e.p.vel.set(0, 0, 0); e.p.diving = false; e.p.launched = false; e.p.recover = 0; e.p.facing = Math.PI; }
+function raceBot(b, dt) {
+  const p = b.p, z = p.pos.z;
+  if (b.finished) return [0, 0, 0];
+  let tx = b.lane, tz = z - 5;
+  // stuck behind something?
+  b.stuckT = (b.stuckT || 0) + dt;
+  if (b.stuckT > 0.6) { b.stuck = (b.lastZ - z < 0.25) ? b.stuck + b.stuckT : 0; b.lastZ = z; b.stuckT = 0; }
+  if (z > -206) {
+    tx = Math.abs(b.lane) < 1.8 ? (Math.sign(b.lane) || 1) * 2.8 : b.lane;   // keep clear of the log posts
+    for (const lg of raceLogs) {
+      const rz = z - lg.z, r = Math.hypot(p.pos.x, rz);
+      if (r < 0.7 || r > 6.2 || Math.abs(rz) > 3) continue;
+      const a = Math.atan2(rz, p.pos.x);
+      let da = (lg.dir > 0 ? a - lg.ang : lg.ang - a) % Math.PI; if (da < 0) da += Math.PI;
+      if (p.grounded && da / lg.speed < b.jw) { p.buffer = 0.1; b.jw = Math.random() < b.skill ? 0.13 + Math.random() * 0.12 : (Math.random() < 0.5 ? 0.02 : 0.45); }
+    }
+  } else if (z > -220.6) {
+    const row = z > -211.6 ? 0 : 1;
+    const dX = b.door[row] === null ? 0 : -4.8 + b.door[row] * 2.4;
+    if (b.door[row] === null || (b.stuck > 0.5 && z - RC.rows[row] < 1.6 && z > RC.rows[row] && Math.abs(p.pos.x - dX) < 0.8)) {
+      if (b.door[row] !== null) b.tried[row].push(b.door[row]);
+      if (b.tried[row].length >= 5) b.tried[row] = [];
+      const left = [0, 1, 2, 3, 4].filter(k => !b.tried[row].includes(k));
+      left.sort((u, v) => Math.abs(-4.8 + u * 2.4 - p.pos.x) - Math.abs(-4.8 + v * 2.4 - p.pos.x) + (Math.random() - 0.5) * 3);
+      b.door[row] = left[0] ?? 2; b.stuck = 0;
+    }
+    tx = -4.8 + b.door[row] * 2.4; tz = RC.rows[row] - 2;
+    if (z - RC.rows[row] > 1.2) tz = z - 1;   // line up first
+  } else if (z > -248.3) {
+    tx = b.lane;
+    // dodge the pusher in front: go to the side it is moving away from, and wait if it's about to cross
+    const pu = racePushers.find(q => z - q.z > 0.6 && z - q.z < 3.2);
+    if (pu) {
+      const px = pu.m.position.x, vx = pu.s.vx || 0, soon = px + vx * 0.5;
+      tx = soon > 0 ? -4 : 4;
+      if (Math.abs(soon - p.pos.x) < 2.6 && z - pu.z < 1.6 && Math.random() < b.skill) return [0, 0, 0];
+    }
+  } else if (z > -266) {
+    const st = raceStones.find(s => s.z < z - 0.6) || null;
+    if (st) { tx = st.m.position.x; tz = st.z; }
+  } else { tx = b.lane * 0.4; tz = -278; }
+  let wx = tx - p.pos.x, wz = tz - z; const d = Math.hypot(wx, wz) || 1; wx /= d; wz /= d;
+  if (z < -247 && z > -267 && p.grounded && !groundAt(p.pos.x + wx * 0.9, z + wz * 0.9)) p.buffer = 0.1;
+  return [wx, wz, 1];
+}
+
 // the computer players
 const BOTS = [['Pip', '#5cc0ff', 'prop', 0.86], ['Noodle', '#8ee05a', 'cone', 0.74], ['Biscuit', '#ff9a3c', 'top', 0.9], ['Ziggy', '#a37cff', 'none', 0.7], ['Mochi', '#5fe0c0', 'cone', 0.8]];
 function nameTag(text) {
@@ -984,25 +1320,58 @@ const bots = BOTS.map(([name, col, hat, skill]) => {
 });
 
 function tileUnder(x, z) { return tileMap.get(Math.round((x - AR.x) / AR.size) + ',' + Math.round((z - AR.z) / AR.size)); }
-function startSpinner(opts = {}) {
-  if (!opts.entities) { SP.online = false; SP.isHost = false; }
+const GAME_KEYS = ['spin', 'spleef', 'race'];            // pads 1, 2, 3
+const GAME_NAMES = { spin: 'Spinner', spleef: 'Spleef', race: 'Obstacle Course' };
+function startSpinner(opts = {}) { startRound('spin', opts); }
+function startRound(game, opts = {}) {
+  if (!GAME_KEYS.includes(game)) game = 'spin';
+  if (!opts.entities) { SP.online = false; SP.isHost = false; SP.round = 'solo' + Date.now().toString(36); }
+  SP.game = game;
   $('resAgain').style.display = '';
-  mode = 'countdown'; SP.cd = 3.5; SP.ang = Math.random() * Math.PI; SP.speed = 0.5; SP.bars = 1; SP.elapsed = 0; SP.fallT = 2.5; SP.placings = []; SP.spectate = false; SP.over = false;
-  bar2.visible = false;
-  for (const tl of arenaTiles) { tl.state = 'up'; tl.t = 0; tl.s.off = false; tl.m.visible = true; tl.m.position.set(tl.bx, -0.25, tl.bz); tl.m.material.color.set(tl.col); }
+  mode = 'countdown'; SP.cd = 3.5; SP.elapsed = 0; SP.placings = []; SP.spectate = false; SP.over = false; SP.winners = null; SP.firstFin = null; SP.finOrder = [];
+  SP.ang = Math.random() * Math.PI; SP.speed = 0.5; SP.bars = 1; SP.fallT = 2.5; bar2.visible = false;
+  if (game === 'spin') for (const tl of arenaTiles) { tl.state = 'up'; tl.t = 0; tl.s.off = false; tl.m.visible = true; tl.m.position.set(tl.bx, -0.25, tl.bz); tl.m.material.color.set(tl.col); }
+  if (game === 'spleef') resetSpleef();
+  if (game === 'race') resetRace(SP.round);
+  NET.outAt = null; NET.finT = null; NET.touched = [];
   SP.entities = opts.entities || [{ name: save.name || 'You', p: player, me: true, alive: true, hitCool: 0 }, ...bots];
   for (const b of bots) if (!SP.entities.includes(b)) { b.alive = false; b.ch.root.visible = false; }
   SP.entities.forEach((e, k) => {
     const slot = e.me && opts.slot !== undefined ? opts.slot : k, total = opts.total || SP.entities.length;
-    const a = slot / total * Math.PI * 2 + 0.3, r = 8;
-    if (e.me) { const ux0 = Math.cos(a), uz0 = Math.sin(a); camYaw = Math.atan2(ux0, uz0); }
-    e.p.pos.set(AR.x + Math.cos(a) * r, 0.01, AR.z + Math.sin(a) * r); e.p.vel.set(0, 0, 0);
-    e.p.facing = Math.atan2(-Math.cos(a), -Math.sin(a)); e.p.diving = false; e.p.recover = 0; e.p.launched = false; e.alive = true; e.hitCool = 0;
-    if (e.ch) { e.ch.root.visible = true; e.goal = null; }
+    const P = e.p;
+    e.alive = true; e.hitCool = 0; e.finished = false; e.finT = null; e.cpZ = RC.cps[0]; e.left = false;
+    P.vel.set(0, 0, 0); P.diving = false; P.recover = 0; P.launched = false; P.knockT = 0; P.logCool = 0;
+    if (game === 'race') {
+      P.pos.set(-5 + (slot % 6) * 2, 0.01, -181 - Math.floor(slot / 6) * 2); P.facing = Math.PI;
+      if (e.me) camYaw = 0;
+    } else {
+      const cx = game === 'spin' ? AR.x : SPL.x, cz = game === 'spin' ? AR.z : SPL.z, r = game === 'spin' ? 8 : 5;
+      const a = slot / total * Math.PI * 2 + 0.3;
+      if (e.me) camYaw = Math.atan2(Math.cos(a), Math.sin(a));
+      P.pos.set(cx + Math.cos(a) * r, 0.01, cz + Math.sin(a) * r);
+      P.facing = Math.atan2(-Math.cos(a), -Math.sin(a));
+    }
+    if (e.bot) { e.goal = null; e.lane = (Math.random() - 0.5) * 7; e.tried = [[], []]; e.door = [null, null]; e.stuck = 0; e.stuckT = 0; e.lastZ = P.pos.z; e.wait = 0; e.jw = 0.2; e.think = 0; e.ch.root.visible = true; }
   });
   camPitch = 0.35;
   stopParkour(false); $('lobbyBtn').style.display = 'none'; $('prompt').style.display = 'none';
-  $('hudSub').textContent = 'Spinner'; sfx.chime();
+  $('timer').style.display = game === 'race' ? 'block' : 'none'; $('timer').textContent = '0.0 s';
+  $('hudSub').textContent = GAME_NAMES[game]; sfx.chime();
+}
+function roundHumans() { return SP.entities.filter(e => !e.bot); }
+function finishEntity(e, t) {
+  if (e.finished) return;
+  e.finished = true; e.finT = t; SP.finOrder.push(e);
+  if (SP.firstFin === null) SP.firstFin = SP.elapsed;
+  const place = SP.finOrder.length;
+  if (e.me) { sfx.fanfare(); confetti(player.pos); toast('Finished ' + ordinal(place) + '! ' + t.toFixed(2) + ' s', 2500); }
+  else toast(e.name + ' finished ' + ordinal(place) + '!', 1300);
+}
+function raceChecks(e) {
+  const P = e.p;
+  if (P.grounded) for (const cz of RC.cps) if (P.pos.z < cz && cz < e.cpZ) { e.cpZ = cz; if (e.me) { toast('Checkpoint!', 900); sfx.chime(); } }
+  if (P.pos.y < RC.out) { raceSpawnFor(e); if (e.me) { sfx.poof(); toast('Splash! Back to the checkpoint.', 1400); } }
+  if (!e.finished && P.pos.z < RC.finishZ && P.pos.y > -1) { finishEntity(e, SP.elapsed); if (e.me) { NET.finT = Math.round(SP.elapsed * 100) / 100; netSendPresence(true); } }
 }
 function animateTiles(dt, decide = false) {
   for (const tl of arenaTiles) {
@@ -1075,74 +1444,120 @@ function botThink(b, dt) {
   }
   return [wx, wz, il];
 }
-function updateSpinner(dt) {
-  if (SP.online && !SP.isHost) { updateSpinnerClient(dt); return; }
+function updateSpinner(dt) { updateRound(dt); }
+function updateRound(dt) {
+  if (SP.online && !SP.isHost) { updateRoundClient(dt); return; }
   for (const e of SP.entities) if (e.hitCool > 0) e.hitCool -= dt;
+  const G = SP.game;
+  if (G === 'race') raceObstacles(SP.elapsed, dt);
   if (mode === 'countdown') {
     SP.cd -= dt;
     const n = Math.ceil(SP.cd - 0.5);
     $('big').textContent = n > 0 ? n : 'GO!'; $('big').style.display = 'block';
-    if (SP.cd <= 0) { mode = 'play'; setTimeout(() => { if (mode === 'play') $('big').style.display = 'none'; }, 600); sfx.fanfare(); }
+    if (SP.cd <= 0) { mode = 'play'; setTimeout(() => { if (mode === 'play') $('big').style.display = 'none'; }, 600); sfx.fanfare(); if (G === 'race') { raceGateS.off = true; raceGate.visible = false; } }
     for (const e of SP.entities) { e.p.vel.set(0, 0, 0); }
     return;
   }
-  if (mode !== 'play' || SP.over) return;
+  if (mode !== 'play') return;
+  if (SP.over) { if (G === 'race') { physics(dt / 2, true); physics(dt / 2, false); } return; }
   SP.elapsed += dt;
-  SP.speed = Math.min(2.8, 0.5 + SP.elapsed * 0.028);
-  if (SP.elapsed > 50 && SP.bars === 1) { SP.bars = 2; bar2.visible = true; toast('A second bar!', 1500); sfx.chime(); }
-  SP.ang += SP.speed * dt;
-  barGroup.rotation.y = -SP.ang;
-  // tiles shake, then drop
-  SP.fallT -= dt;
-  if (SP.fallT <= 0) {
-    SP.fallT = Math.max(0.5, 2.0 - SP.elapsed * 0.025);
-    const up = arenaTiles.filter(tl => tl.state === 'up');
-    for (let k = 0; k < 2 && up.length; k++) { const tl = up.splice((Math.random() * up.length) | 0, 1)[0]; tl.state = 'shake'; tl.t = 0; }
+  if (G === 'spin') {
+    SP.speed = Math.min(2.8, 0.5 + SP.elapsed * 0.028);
+    if (SP.elapsed > 50 && SP.bars === 1) { SP.bars = 2; bar2.visible = true; toast('A second bar!', 1500); sfx.chime(); }
+    SP.ang += SP.speed * dt;
+    barGroup.rotation.y = -SP.ang;
+    SP.fallT -= dt;
+    if (SP.fallT <= 0) {
+      SP.fallT = Math.max(0.5, 2.0 - SP.elapsed * 0.025);
+      const up = arenaTiles.filter(tl => tl.state === 'up');
+      for (let k = 0; k < 2 && up.length; k++) { const tl = up.splice((Math.random() * up.length) | 0, 1)[0]; tl.state = 'shake'; tl.t = 0; }
+    }
+    animateTiles(dt, true);
   }
-  animateTiles(dt, true);
+  if (G === 'spleef') animateHex(dt);
   // move everyone
   for (const e of SP.entities) {
-    if (!e.alive) continue;
-    if (e.remote) {   // a friend: their own computer moves them; we only hear whether they're still in
+    if (G !== 'race' && !e.alive) continue;
+    if (e.remote) {   // a friend: their own computer moves them; we hear where they are and how they're doing
       const pr = NET.peers.find(x => x.peer === e.label), ps = pr && pr.presence;
+      if (G === 'race') {
+        if (!ps || ps.r !== SP.round) { e.left = true; continue; }
+        if (Array.isArray(ps.p)) e.pz = +ps.p[2] || 0;
+        if (typeof ps.f === 'number' && isFinite(ps.f)) finishEntity(e, ps.f);
+        continue;
+      }
+      if (G === 'spleef' && ps && Array.isArray(ps.tt)) for (const i of ps.tt) { const t = hexTiles[i | 0]; if (t) spleefStep(t.s, false); }
       if (!ps || ps.r !== SP.round || ps.a === 0) { e.outFromPeer = ps && typeof ps.o === 'number' ? ps.o : SP.elapsed; eliminate(e); }
       continue;
     }
+    let wx = 0, wz = 0, il = 0;
+    if (!e.me) [wx, wz, il] = G === 'spin' ? botThink(e, dt) : G === 'spleef' ? spleefBot(e, dt) : raceBot(e, dt);
     if (e.me) { physics(dt / 2, true); physics(dt / 2, false); }
-    else { const [wx, wz, il] = botThink(e, dt); physicsFor(e.p, wx, wz, il, dt / 2, true); physicsFor(e.p, wx, wz, il, dt / 2, false); }
-    if (e.p.pos.y < -4) eliminate(e);
+    else { physicsFor(e.p, wx, wz, il, dt / 2, true); physicsFor(e.p, wx, wz, il, dt / 2, false); }
+    if (G === 'race') raceChecks(e);
+    else if (e.p.pos.y < (G === 'spin' ? -4 : SPL.out)) eliminate(e);
   }
-  const alive = aliveCount();
-  $('hudSub').textContent = 'Spinner · ' + alive + ' left · ' + Math.floor(SP.elapsed) + ' s · Q to leave';
-  if (!SP.over && (alive <= 1 || SP.elapsed > 150)) { SP.over = true; SP.winners = SP.entities.filter(e => e.alive); $('big').textContent = alive === 1 ? SP.winners[0].name + ' wins!' : 'Time!'; $('big').style.display = 'block'; $('big').style.fontSize = 'clamp(2.5rem,8vw,5rem)'; setTimeout(endSpinner, 1800); }
+  let over = false, big = '';
+  if (G === 'race') {
+    const fin = SP.finOrder.length;
+    $('timer').textContent = SP.elapsed.toFixed(1) + ' s';
+    $('hudSub').textContent = 'Obstacle Course · ' + fin + '/' + SP.entities.length + ' finished · Q to leave';
+    const humansDone = roundHumans().every(e => e.finished || e.left);
+    if (humansDone || (SP.firstFin !== null && SP.elapsed > SP.firstFin + 25) || SP.elapsed > 180) { over = true; big = SP.finOrder.length ? SP.finOrder[0].name + ' wins!' : 'Time!'; }
+  } else {
+    const alive = aliveCount();
+    $('hudSub').textContent = GAME_NAMES[G] + ' · ' + alive + ' left · ' + Math.floor(SP.elapsed) + ' s · Q to leave';
+    if (alive <= 1 || SP.elapsed > (G === 'spin' ? 150 : 180)) { over = true; SP.winners = SP.entities.filter(e => e.alive); big = alive === 1 ? SP.winners[0].name + ' wins!' : 'Time!'; }
+  }
+  if (over && !SP.over) { SP.over = true; $('big').textContent = big; $('big').style.display = 'block'; $('big').style.fontSize = 'clamp(2.5rem,8vw,5rem)'; setTimeout(endSpinner, 1800); }
+}
+function roundOrder() {
+  if (SP.game === 'race') {
+    const prog = e => e.me ? player.pos.z : e.remote ? (e.pz ?? 0) : e.p.pos.z;
+    const rest = SP.entities.filter(e => !e.finished).sort((a, b) => prog(a) - prog(b));
+    return { order: [...SP.finOrder, ...rest], won: e => e === SP.finOrder[0] };
+  }
+  const winners = SP.winners || SP.entities.filter(e => e.alive);
+  return { order: [...winners, ...SP.placings], won: e => winners.includes(e) };
+}
+// quest rewards for a finished round
+function roundQuest(game, won, finished) {
+  let q = -1, what = '';
+  if (game === 'spin' && won) { q = 2; what = 'Comet trail'; }
+  if (game === 'spleef' && won) { q = 3; what = 'Shovel backpack'; }
+  if (game === 'race' && finished) { q = 4; what = 'Rainbow suit'; }
+  if (q < 0 || save.done[q]) return '';
+  save.done[q] = true; persist(); drawQuestBoard();
+  return '<p class="unlock">Quest complete: <b>' + what + '</b> unlocked! Try it at the skins booth.</p>';
 }
 function endSpinner() {
   mode = 'results';
-  const winners = SP.winners || SP.entities.filter(e => e.alive);
-  $('big').style.display = 'none'; $('big').style.fontSize = '';
-  const order = [...winners, ...SP.placings];
+  $('big').style.display = 'none'; $('big').style.fontSize = ''; $('timer').style.display = 'none';
+  const { order, won } = roundOrder();
   const pts = [10, 7, 5, 3, 2, 1];
-  const youWon = winners.some(e => e.me);
-  if (SP.online && SP.isHost) { SP.res = order.slice(0, 6).map(e => [e.name, e.me ? NET.myLabel : (e.label || ''), winners.includes(e) ? 1 : 0]); netSendPresence(true); $('resAgain').style.display = 'none'; }
-  let rows = order.map((e, k) => `<tr class="${e.me ? 'me' : ''}"><td>${winners.includes(e) ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(e.name)}${e.me ? ' (you)' : ''}</td><td>+${winners.includes(e) ? pts[0] : pts[k] || 0}</td></tr>`).join('');
-  let extra = SP.online ? '<p style="color:#6a62a8;font-weight:600">Step on pad 1 in the lobby to play again.</p>' : '';
-  if (youWon) { sfx.fanfare(); confetti(player.pos); if (!save.done[2]) { save.done[2] = true; persist(); drawQuestBoard(); extra = '<p class="unlock">Quest complete: <b>Comet trail</b> unlocked! Try it at the skins booth.</p>'; } }
-  $('resTitle').textContent = youWon ? 'You win!' : (SP.placings.find(e => e.me) ? 'Good try!' : 'Round over');
+  const youWon = order.some(e => e.me && won(e));
+  const meE = SP.entities.find(e => e.me);
+  if (SP.online && SP.isHost) { SP.res = order.slice(0, 6).map(e => [e.name, e.me ? NET.myLabel : (e.label || ''), won(e) ? 1 : 0, e.finished ? Math.round(e.finT * 100) / 100 : null]); netSendPresence(true); $('resAgain').style.display = 'none'; }
+  const rows = order.map((e, k) => `<tr class="${e.me ? 'me' : ''}"><td>${won(e) ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(e.name)}${e.me ? ' (you)' : ''}${SP.game === 'race' ? (e.finished ? ' · ' + e.finT.toFixed(1) + ' s' : ' · not finished') : ''}</td><td>+${pts[k] || 0}</td></tr>`).join('');
+  let extra = SP.online ? '<p style="color:#6a62a8;font-weight:600">Step on a pad in the lobby to play again.</p>' : '';
+  if (youWon) { sfx.fanfare(); confetti(player.pos); }
+  extra = roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
+  $('resTitle').textContent = youWon ? 'You win!' : (SP.game === 'race' ? (meE && meE.finished ? 'You finished!' : 'Round over') : (SP.placings.find(e => e.me) ? 'Good try!' : 'Round over'));
   $('resTable').innerHTML = rows; $('resExtra').innerHTML = extra;
   $('results').classList.remove('hidden');
   if (document.pointerLockElement) document.exitPointerLock();
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function leaveSpinner() {
-  mode = 'lobby'; $('results').classList.add('hidden'); $('big').style.display = 'none';
+  mode = 'lobby'; $('results').classList.add('hidden'); $('big').style.display = 'none'; $('big').style.fontSize = ''; $('timer').style.display = 'none';
   for (const b of bots) { b.ch.root.visible = false; b.alive = false; }
-  SP.online = false; SP.isHost = false; SP.res = null; NET.outAt = null; NET.ready = false; $('resAgain').style.display = '';
+  SP.online = false; SP.isHost = false; SP.res = null; NET.outAt = null; NET.finT = null; NET.touched = []; NET.ready = 0; $('resAgain').style.display = '';
   if (NET.room) setTimeout(() => netSendPresence(true), 50);
   player.pos.copy(SPAWN).add(new THREE.Vector3(0, 0, -6)); player.vel.set(0, 0, 0); player.diving = false; player.recover = 0; player.launched = false;
   camYaw = 0; camPitch = 0.28; SP.spectate = false;
-  $('hudSub').textContent = 'Lobby · v0.3.3'; requestLock();
+  $('hudSub').textContent = 'Lobby · v0.4'; requestLock();
 }
-$('resAgain').onclick = () => { $('results').classList.add('hidden'); startSpinner(); requestLock(); };
+$('resAgain').onclick = () => { $('results').classList.add('hidden'); startRound(SP.game); requestLock(); };
 $('resLobby').onclick = leaveSpinner;
 
 /* ---------- ONLINE ROOMS (v0.3) ---------- */
@@ -1329,7 +1744,7 @@ async function netJoin(code) {
 async function netLeave(silent) {
   const room = NET.room;
   if (SP.online && mode !== 'lobby') leaveSpinner();
-  NET.room = null; NET.code = null; NET.peers = []; NET.host = null; NET.isHost = false; NET.hostG = null; NET.ready = false;
+  NET.room = null; NET.code = null; NET.peers = []; NET.host = null; NET.isHost = false; NET.hostG = null; NET.ready = 0;
   if (NET.unsub) { try { NET.unsub(); } catch (e) {} NET.unsub = null; }
   for (const r of NET.remotes.values()) { scene.remove(r.ch.root); }
   NET.remotes.clear();
@@ -1352,15 +1767,17 @@ function netSendPresence(force) {
   const meEnt = SP.entities.find(e => e.me);
   const pres = {
     v: 1, j: NET.joinedAt, n: cleanName(save.name),
-    sk: [save.colour | 0, save.pattern | 0, save.hat || 'none', save.outfit || 'none'].join('|'),
+    sk: [save.colour | 0, save.pattern | 0, save.hat || 'none', save.outfit || 'none', save.back || 'none'].join('|'),
     p: [r2(P.pos.x), r2(P.pos.y), r2(P.pos.z), r2(P.facing)],
     st: (P.grounded ? 1 : 0) | (P.diving ? 2 : 0) | (P.launched ? 4 : 0) | (P.recover > 0 ? 8 : 0),
     m: mode === 'lobby' ? 'lobby' : (mode === 'results' ? 'res' : 'spin'),
     r: SP.online ? SP.round : null,
-    a: SP.online && meEnt && !meEnt.alive ? 0 : 1,
+    a: SP.online && SP.game !== 'race' && meEnt && !meEnt.alive ? 0 : 1,
     o: NET.outAt,
     b: myBest(),
-    rd: NET.ready ? 1 : 0,
+    rd: NET.ready | 0,
+    tt: SP.online && SP.game === 'spleef' && mode !== 'lobby' && NET.touched && NET.touched.length ? NET.touched.slice(-40) : null,
+    f: SP.online && SP.game === 'race' && mode !== 'lobby' ? NET.finT : null,
     g: SP.online && SP.isHost ? hostState() : null,
   };
   NET.room.presence(pres).then(() => { NET.sendOk++; NET.sendErr = null; }).catch(e => { NET.sendErr = (e && (e.code || e.message)) || 'error'; });
@@ -1394,18 +1811,21 @@ function netPeersChanged(ch) {
     if (Array.isArray(ps.p) && ps.p.length >= 4 && ps.p.every(v => typeof v === 'number' && isFinite(v))) { r.tgt.set(ps.p[0], ps.p[1], ps.p[2]); r.face = ps.p[3]; }
     const nm = cleanName(ps.n);
     if (nm !== r.name) { r.name = nm; if (r.tag) r.ch.root.remove(r.tag); r.tag = nameTag(nm); r.ch.root.add(r.tag); }
-    if (typeof ps.sk === 'string' && ps.sk !== r.sk) { r.sk = ps.sk; const [c, pt, h, o] = ps.sk.split('|'); applySkinTo(r.ch, { colour: +c || 0, pattern: +pt || 0, hat: h, outfit: OUTFITS.some(x => x.id === o) ? o : 'none' }); }
+    if (typeof ps.sk === 'string' && ps.sk !== r.sk) { r.sk = ps.sk; const [c, pt, h, o, bk] = ps.sk.split('|'); applySkinTo(r.ch, { colour: +c || 0, pattern: +pt || 0, hat: h, outfit: OUTFITS.some(x => x.id === o) ? o : 'none', back: bk || 'none' }); }
   }
   for (const [k, r] of NET.remotes) if (!seen.has(k)) { scene.remove(r.ch.root); NET.remotes.delete(k); }
   // a new round from the host pulls everyone in the lobby into the arena
   const g = NET.hostG;
   if (g && g.r && g.r !== NET.lastRound && g.ph === 'cd' && mode === 'lobby' && Array.isArray(g.pl) && g.pl.includes(NET.myLabel)) clientStartRound(g);
   // the host starts Spinner a few seconds after anyone presses E on pad 1
-  if (NET.isHost && mode === 'lobby' && !SP.online && !NET.startTimer && players.some(pr => !pr.sameTab && pr.presence.rd === 1 && pr.presence.m === 'lobby')) {
-    toast('A friend is ready! Spinner starts in 3…', 2600);
-    NET.startTimer = setTimeout(() => { NET.startTimer = null; if (NET.isHost && mode === 'lobby' && !SP.online) hostStartRound(); }, 3000);
+  const readyPr = NET.isHost && mode === 'lobby' && !SP.online && !NET.startTimer && players.find(pr => !pr.sameTab && pr.presence.rd >= 1 && pr.presence.rd <= 3 && pr.presence.m === 'lobby');
+  if (readyPr) {
+    const game = GAME_KEYS[readyPr.presence.rd - 1];
+    toast('A friend is ready! ' + GAME_NAMES[game] + ' starts in 3…', 2600);
+    NET.startTimer = setTimeout(() => { NET.startTimer = null; if (NET.isHost && mode === 'lobby' && !SP.online) hostStartRound(game); }, 3000);
   }
   if (performance.now() - NET.lbT > 1000) { NET.lbT = performance.now(); drawLeaderboard(); }
+  else if (!NET.lbTimer) NET.lbTimer = setTimeout(() => { NET.lbTimer = null; NET.lbT = performance.now(); drawLeaderboard(); }, 1000);
   updateOnlineBtn();
   if (onlineOpen) renderOnlinePanel();
 }
@@ -1440,61 +1860,73 @@ function netUpdate(dt, t) {
 }
 function hostState() {
   const r2 = v => Math.round(v * 100) / 100;
+  const G = SP.game;
   return {
-    r: SP.round, ph: mode === 'countdown' ? 'cd' : mode === 'play' ? 'play' : 'res', cd: r2(SP.cd), el: r2(SP.elapsed), sp: r2(SP.speed),
+    gm: G, r: SP.round, ph: mode === 'countdown' ? 'cd' : mode === 'play' ? 'play' : 'res', cd: r2(SP.cd), el: r2(SP.elapsed), sp: r2(SP.speed),
     a: Math.round(SP.ang * 1000) / 1000, bs: SP.bars,
-    tl: arenaTiles.map(x => x.state === 'up' ? '0' : x.state === 'shake' ? '1' : '2').join(''),
-    pl: SP.pl, n: SP.entities.length, al: aliveCount(),
-    bt: SP.entities.filter(e => e.bot).map(e => [r2(e.p.pos.x), r2(e.p.pos.y), r2(e.p.pos.z), r2(e.p.facing), e.alive ? 1 : 0, e.p.launched ? 1 : 0, e.p.grounded ? 1 : 0]),
+    tl: G === 'spin' ? arenaTiles.map(x => x.state === 'up' ? '0' : x.state === 'shake' ? '1' : '2').join('') : G === 'spleef' ? hexTiles.map(x => x.state === 'up' ? '0' : x.state === 'shake' ? '1' : '2').join('') : '',
+    pl: SP.pl, n: SP.entities.length, al: G === 'race' ? SP.finOrder.length : aliveCount(),
+    bt: SP.entities.filter(e => e.bot).map(e => [r2(e.p.pos.x), r2(e.p.pos.y), r2(e.p.pos.z), r2(e.p.facing), (G === 'race' || e.alive) ? 1 : 0, e.p.launched ? 1 : 0, e.p.grounded ? 1 : 0]),
     res: SP.res || null,
   };
 }
 function hostName() { const h = NET.peers.find(pr => pr.peer === NET.host); return cleanName(h && h.presence && h.presence.n || 'the host'); }
-function netPadPressed() {
-  if (NET.isHost) { hostStartRound(); return; }
-  NET.ready = true; netSendPresence(true);
-  toast('Ready! Waiting for ' + hostName() + ' (the host) to start Spinner…', 3000);
+function netPadPressed(n) {
+  const game = GAME_KEYS[n - 1] || 'spin';
+  if (NET.isHost) { hostStartRound(game); return; }
+  NET.ready = n; netSendPresence(true);
+  toast('Ready! Waiting for ' + hostName() + ' (the host) to start ' + GAME_NAMES[game] + '…', 3000);
 }
-function hostStartRound() {
+function hostStartRound(game = 'spin') {
   if (NET.startTimer) { clearTimeout(NET.startTimer); NET.startTimer = null; }
-  const humans = NET.peers.filter(pr => !pr.sameTab && pr.kind === 'viewer' && pr.presence && pr.presence.v === 1 && pr.presence.m === 'lobby').slice(0, 5);
+  const humans = NET.peers.filter(pr => !pr.sameTab && pr.kind === 'viewer' && pr.presence && pr.presence.v === 1 && pr.presence.m === 'lobby').slice(0, 7);
   const nb = Math.max(0, Math.min(5, 5 - humans.length));
   const ents = [{ name: cleanName(save.name), p: player, me: true, alive: true, hitCool: 0 },
     ...humans.map(pr => ({ name: cleanName(pr.presence.n), remote: true, label: pr.peer, alive: true, hitCool: 0, p: { pos: new THREE.Vector3(), vel: new THREE.Vector3() } })),
     ...bots.slice(0, nb)];
-  SP.online = true; SP.isHost = true; SP.round = 'r' + Date.now().toString(36); SP.pl = [NET.myLabel, ...humans.map(h => h.peer)]; SP.res = null; NET.outAt = null; NET.ready = false;
-  startSpinner({ entities: ents });
+  SP.online = true; SP.isHost = true; SP.round = 'r' + Date.now().toString(36); SP.pl = [NET.myLabel, ...humans.map(h => h.peer)]; SP.res = null; NET.outAt = null; NET.ready = 0;
+  startRound(game, { entities: ents });
   netSendPresence(true);
-  toast('Spinner! ' + (humans.length + 1) + ' player' + (humans.length ? 's' : '') + (nb ? ' + ' + nb + ' computer players' : ''), 2200);
+  toast(GAME_NAMES[game] + '! ' + (humans.length + 1) + ' player' + (humans.length ? 's' : '') + (nb ? ' + ' + nb + ' computer players' : ''), 2200);
 }
 function clientStartRound(g) {
   NET.lastRound = g.r;
+  const game = GAME_KEYS.includes(g.gm) ? g.gm : 'spin';
   const k = Math.max(0, g.pl.indexOf(NET.myLabel)), n = Math.max(2, g.n | 0);
-  SP.online = true; SP.isHost = false; SP.round = g.r; SP.res = null; NET.outAt = null; NET.ready = false;
+  SP.online = true; SP.isHost = false; SP.round = g.r; SP.res = null; NET.outAt = null; NET.ready = 0;
   if (onlineOpen) closeOnline(); if (panelOpen) closeSkins();
-  startSpinner({ entities: [{ name: cleanName(save.name), p: player, me: true, alive: true, hitCool: 0 }], slot: k, total: n });
+  startRound(game, { entities: [{ name: cleanName(save.name), p: player, me: true, alive: true, hitCool: 0 }], slot: k, total: n });
   SP.cd = +g.cd || 3;
   for (const b of bots) { b.ch.root.visible = false; b.alive = false; }
-  toast(hostName() + ' started Spinner!', 1800);
+  toast(hostName() + ' started ' + GAME_NAMES[game] + '!', 1800);
 }
-function updateSpinnerClient(dt) {
-  const me = SP.entities[0], g = NET.hostG;
+function updateRoundClient(dt) {
+  const me = SP.entities[0], g = NET.hostG, G = SP.game;
   if (mode === 'results') return;
   if (!NET.room || !g || g.r !== SP.round) {
     if (performance.now() - NET.hostGAt > 6000) { toast('The host left, so the game ended.', 2500); leaveSpinner(); }
     return;
   }
   if (me.hitCool > 0) me.hitCool -= dt;
-  SP.speed = +g.sp || 0.5; SP.bars = g.bs | 0 || 1; bar2.visible = SP.bars > 1;
   const since = Math.min(0.5, (performance.now() - NET.hostGAt) / 1000);
-  SP.ang = (+g.a || 0) + (g.ph === 'play' ? SP.speed * since : 0);
-  barGroup.rotation.y = -SP.ang;
-  if (typeof g.tl === 'string') for (let i = 0; i < arenaTiles.length && i < g.tl.length; i++) {
-    const tl = arenaTiles[i], c = g.tl[i];
-    if (c === '1' && tl.state === 'up') { tl.state = 'shake'; tl.t = 0; }
-    if (c === '2' && (tl.state === 'up' || tl.state === 'shake')) { tl.state = 'fall'; tl.s.off = true; tl.vy = 0; tl.m.position.x = tl.bx; }
-  }
-  animateTiles(dt);
+  const el = (+g.el || 0) + (g.ph === 'play' ? since : 0);
+  if (G === 'spin') {
+    SP.speed = +g.sp || 0.5; SP.bars = g.bs | 0 || 1; bar2.visible = SP.bars > 1;
+    SP.ang = (+g.a || 0) + (g.ph === 'play' ? SP.speed * since : 0);
+    barGroup.rotation.y = -SP.ang;
+    if (typeof g.tl === 'string') for (let i = 0; i < arenaTiles.length && i < g.tl.length; i++) {
+      const tl = arenaTiles[i], c = g.tl[i];
+      if (c === '1' && tl.state === 'up') { tl.state = 'shake'; tl.t = 0; }
+      if (c === '2' && (tl.state === 'up' || tl.state === 'shake')) { tl.state = 'fall'; tl.s.off = true; tl.vy = 0; tl.m.position.x = tl.bx; }
+    }
+    animateTiles(dt);
+  } else if (G === 'spleef') {
+    if (typeof g.tl === 'string') for (let i = 0; i < hexTiles.length && i < g.tl.length; i++) {
+      const t = hexTiles[i], c = g.tl[i];
+      if (c !== '0' && t.state === 'up') { t.state = 'shake'; t.t = c === '2' ? SPL.shake : 0; }
+    }
+    animateHex(dt);
+  } else if (G === 'race') raceObstacles(el, dt);
   // the host's computer players
   const bt = Array.isArray(g.bt) ? g.bt : [];
   bots.forEach((b, k) => {
@@ -1502,7 +1934,8 @@ function updateSpinnerClient(dt) {
     if (!d || !d[4]) { if (b.alive) { b.alive = false; b.ch.root.visible = false; } return; }
     if (!b.alive) { b.alive = true; b.ch.root.visible = true; b.p.pos.set(d[0], d[1], d[2]); }
     const ox = b.p.pos.x, oy = b.p.pos.y, oz = b.p.pos.z;
-    b.p.pos.lerp(new THREE.Vector3(d[0], d[1], d[2]), 1 - Math.exp(-dt * 14));
+    if (b.p.pos.distanceTo(new THREE.Vector3(d[0], d[1], d[2])) > 6) b.p.pos.set(d[0], d[1], d[2]);
+    else b.p.pos.lerp(new THREE.Vector3(d[0], d[1], d[2]), 1 - Math.exp(-dt * 14));
     if (dt > 0) b.p.vel.set((b.p.pos.x - ox) / dt, (b.p.pos.y - oy) / dt, (b.p.pos.z - oz) / dt);
     b.p.facing = angLerp(b.p.facing, d[3], Math.min(1, dt * 12)); b.p.launched = !!d[5]; b.p.grounded = !!d[6]; b.p.diving = false; b.p.recover = 0;
   });
@@ -1511,28 +1944,38 @@ function updateSpinnerClient(dt) {
     const n = Math.ceil(SP.cd - 0.5); $('big').textContent = n > 0 ? n : 'GO!'; $('big').style.display = 'block';
     player.vel.set(0, 0, 0); return;
   }
-  if (mode === 'countdown') { mode = 'play'; $('big').textContent = 'GO!'; setTimeout(() => { if (mode === 'play') $('big').style.display = 'none'; }, 600); sfx.fanfare(); }
-  SP.elapsed = +g.el || 0;
-  if (me.alive) {
+  if (mode === 'countdown') { mode = 'play'; $('big').textContent = 'GO!'; setTimeout(() => { if (mode === 'play') $('big').style.display = 'none'; }, 600); sfx.fanfare(); if (G === 'race') { raceGateS.off = true; raceGate.visible = false; } }
+  SP.elapsed = el;
+  if (G === 'race') {
     physics(dt / 2, true); physics(dt / 2, false);
-    if (player.pos.y < -4) { NET.outAt = SP.elapsed; eliminate(me); netSendPresence(true); }
+    if (!me.finished) raceChecks(me); else if (player.pos.y < RC.out) raceSpawnFor(me);
+    $('timer').textContent = (me.finished ? me.finT : el).toFixed(1) + ' s';
+    $('hudSub').textContent = 'Online Obstacle Course · ' + (g.al | 0) + ' finished · Q to leave';
+  } else {
+    if (me.alive) {
+      physics(dt / 2, true); physics(dt / 2, false);
+      if (player.pos.y < (G === 'spin' ? -4 : SPL.out)) { NET.outAt = SP.elapsed; eliminate(me); netSendPresence(true); }
+    }
+    $('hudSub').textContent = 'Online ' + GAME_NAMES[G] + ' · ' + (g.al | 0) + ' left · ' + Math.floor(SP.elapsed) + ' s · Q to leave';
   }
-  $('hudSub').textContent = 'Online Spinner · ' + (g.al | 0) + ' left · ' + Math.floor(SP.elapsed) + ' s · Q to leave';
   if (g.ph === 'res' && Array.isArray(g.res)) showOnlineResults(g.res);
 }
 function showOnlineResults(res) {
-  mode = 'results'; $('big').style.display = 'none'; $('big').style.fontSize = '';
+  mode = 'results'; $('big').style.display = 'none'; $('big').style.fontSize = ''; $('timer').style.display = 'none';
   const pts = [10, 7, 5, 3, 2, 1];
   let youWon = false, rows = '';
+  const meE = SP.entities.find(e => e.me);
   res.slice(0, 6).forEach((row, k) => {
     if (!Array.isArray(row)) return;
-    const [nm, label, won] = row, mine = label === NET.myLabel;
+    const [nm, label, won, ft] = row, mine = label === NET.myLabel;
     if (mine && won) youWon = true;
-    rows += `<tr class="${mine ? 'me' : ''}"><td>${won ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(cleanName(nm))}${mine ? ' (you)' : ''}</td><td>+${won ? pts[0] : pts[k] || 0}</td></tr>`;
+    const tm = SP.game === 'race' ? (typeof ft === 'number' ? ' · ' + ft.toFixed(1) + ' s' : ' · not finished') : '';
+    rows += `<tr class="${mine ? 'me' : ''}"><td>${won ? '1st' : ordinal(k + 1)}</td><td>${escapeHtml(cleanName(nm))}${mine ? ' (you)' : ''}${tm}</td><td>+${pts[k] || 0}</td></tr>`;
   });
-  let extra = '<p style="color:#6a62a8;font-weight:600">Step on pad 1 in the lobby to play again.</p>';
-  if (youWon) { sfx.fanfare(); confetti(player.pos); if (!save.done[2]) { save.done[2] = true; persist(); drawQuestBoard(); extra = '<p class="unlock">Quest complete: <b>Comet trail</b> unlocked!</p>' + extra; } }
-  $('resTitle').textContent = youWon ? 'You win!' : 'Round over';
+  let extra = '<p style="color:#6a62a8;font-weight:600">Step on a pad in the lobby to play again.</p>';
+  if (youWon) { sfx.fanfare(); confetti(player.pos); }
+  extra = roundQuest(SP.game, youWon, !!(meE && meE.finished)) + extra;
+  $('resTitle').textContent = youWon ? 'You win!' : (SP.game === 'race' && meE && meE.finished ? 'You finished!' : 'Round over');
   $('resTable').innerHTML = rows; $('resExtra').innerHTML = extra; $('resAgain').style.display = 'none';
   $('results').classList.remove('hidden');
   if (document.pointerLockElement) document.exitPointerLock();
@@ -1558,7 +2001,7 @@ function renderOnlinePanel() {
   let conn = '?'; try { conn = NET.room.connected() ? 'connected' : 'not connected'; } catch (e) { conn = 'error'; }
   const others = NET.peers.filter(pr => !pr.sameTab).length;
   let viewing = '?'; try { viewing = NET.p2p ? others : Math.max(0, NET.api.peers().filter(pr => pr.kind === 'viewer').length - 1); } catch (e) {}
-  $('onDiag').textContent = (NET.p2p ? 'Website mode · ' : '') + 'Room status: ' + conn + ' · others in this room: ' + others + ' · others viewing the game: ' + viewing + ' · sending your position: ' + (NET.sendErr ? 'problem (' + NET.sendErr + ')' : NET.sendOk ? 'OK' : 'starting') + (NET.peerErr ? ' · room error: ' + NET.peerErr : '') + ' · v0.3.3';
+  $('onDiag').textContent = (NET.p2p ? 'Website mode · ' : '') + 'Room status: ' + conn + ' · others in this room: ' + others + ' · others viewing the game: ' + viewing + ' · sending your position: ' + (NET.sendErr ? 'problem (' + NET.sendErr + ')' : NET.sendOk ? 'OK' : 'starting') + (NET.peerErr ? ' · room error: ' + NET.peerErr : '') + ' · v0.4';
 }
 function updateOnlineBtn() {
   const b = $('onlineBtn');
@@ -1619,6 +2062,7 @@ function animateChar(h, p, dt, t) {
   else { h.armL.rotation.x = -swing * 1.1; h.armR.rotation.x = swing * 1.1; }
   h.armL.rotation.z = -0.35 - (p.grounded ? 0 : 0.5); h.armR.rotation.z = 0.35 + (p.grounded ? 0 : 0.5);
   h.outfitSlot.traverse(o => { if (o.name === 'wing') o.rotation.y = Math.sign(o.position.x) * (0.5 + Math.sin(t * 60) * 0.35); if (o.name === 'flick') o.scale.y = 0.8 + Math.random() * 0.5; });
+  if (h.rainbow && h.bodyMat.map) h.bodyMat.map.offset.x = (t * 0.12) % 1;
   const blade = h.hatSlot.getObjectByName('blade'); if (blade) blade.rotation.y += dt * (p.grounded ? 6 : 30);
 }
 
@@ -1661,7 +2105,7 @@ function frame() {
   const dt = Math.min(0.033, clock.getDelta()), t = clock.elapsedTime;
   // moving platform
   updateCourse(dt);
-  if (started && !panelOpen && mode !== 'lobby') { updateSpinner(dt); for (const b of bots) if (b.alive) animateChar(b.ch, b.p, dt, t); }
+  if (started && !panelOpen && mode !== 'lobby') { updateRound(dt); for (const b of bots) if (b.alive) animateChar(b.ch, b.p, dt, t); }
   if (started && !panelOpen && mode === 'lobby') {
     const steps = 2; for (let i = 0; i < steps; i++) physics(dt / steps, i === 0);
     if (parkour.running) { parkour.t += dt; $('timer').textContent = parkour.t.toFixed(1) + ' s'; }
@@ -1683,7 +2127,7 @@ function frame() {
   if (player.grounded && Math.hypot(player.pos.x - tele.position.x, player.pos.z - tele.position.z) < 0.9 && Math.abs(player.pos.y - 6.75) < 0.1) { if (parkour.running && parkour.cp >= 2) finishParkour(); player.pos.copy(SPAWN); chestState.opening = false; chestState.open = 0; player.vel.set(0, 0, 0); stopParkour(false); sfx.poof(); toast('Back to the lobby!'); }
   for (let i = bits.length - 1; i >= 0; i--) { const b = bits[i]; b.v.y -= 12 * dt; b.m.position.addScaledVector(b.v, dt); b.m.rotation.x += b.spin * dt; b.m.rotation.y += b.spin * dt * 0.7; b.life -= dt; if (b.life <= 0) { scene.remove(b.m); bits.splice(i, 1); } }
   // camera follows behind, orbiting with the mouse
-  const follow = SP.spectate && mode !== 'lobby' ? new THREE.Vector3(AR.x, 1, AR.z) : new THREE.Vector3(player.pos.x, Math.max(player.pos.y, mode === 'lobby' ? -50 : -3) + 1.3, player.pos.z);
+  const follow = SP.spectate && mode !== 'lobby' ? (SP.game === 'spleef' ? new THREE.Vector3(SPL.x, -3, SPL.z) : new THREE.Vector3(AR.x, 1, AR.z)) : new THREE.Vector3(player.pos.x, Math.max(player.pos.y, mode === 'lobby' ? -50 : SP.game === 'spleef' ? -15 : -3) + 1.3, player.pos.z);
   camTarget.lerp(follow, Math.min(1, dt * (SP.spectate ? 2 : 10)));
   const cd = SP.spectate && mode !== 'lobby' ? 26 : camDist;
   if (shakeCam > 0) { shakeCam -= dt; camTarget.x += (Math.random() - 0.5) * 0.2; camTarget.y += (Math.random() - 0.5) * 0.2; }
@@ -1708,7 +2152,7 @@ requestAnimationFrame(frame);
 window.__moverZ = () => movers[0].m.position.z;
 window.__sim = (n, dt, keysFn) => { for (let i = 0; i < n; i++) { if (keysFn) keysFn(i * dt); updateCourse(dt); physics(dt / 2, true); physics(dt / 2, false); } return { x: player.pos.x, y: player.pos.y, z: player.pos.z, g: player.grounded, d: player.diving }; };
 window.__press = (code) => { const P = player; if (code === 'Space') { if (!P.grounded && P.coyote <= 0 && !P.diving && P.airJumped && !nearGround()) startDive(); else P.buffer = CONFIG.jumpBuffer; } };
-window.__wr = { NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
+window.__wr = { startRound, hexTiles, raceDoors, RC, SPL, progressCode, loadProgress, get game() { return SP.game; }, tickRound(n, dt, fn) { for (let i = 0; i < n; i++) { if (fn) fn(i * dt); updateRound(dt); } return { mode, elapsed: +SP.elapsed.toFixed(1), alive: SP.entities.filter(e => e.alive).map(e => e.name), fin: (SP.finOrder || []).map(e => e.name + ':' + e.finT.toFixed(1)) }; }, NET, netJoin, netLeave, get onlineOpen() { return onlineOpen; }, tickSpinner(n, dt) { for (let i = 0; i < n; i++) updateSpinner(dt); return { mode, alive: SP.entities.filter(e => e.alive).map(e => e.name), elapsed: +SP.elapsed.toFixed(1) }; }, startSpinner, leaveSpinner, get mode() { return mode; }, SP, bots, get tiles() { return arenaTiles; }, returnToLobby, get save() { return save; }, player, keys, get parkour() { return parkour; }, save, startDive, interact, openSkins, closeSkins, start() { started = true; $('start').classList.add('hidden'); }, setCam(y, p) { camYaw = y; camPitch = p; } };
 </script>
 </body>
 </html>
